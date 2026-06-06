@@ -3,7 +3,7 @@
 <!-- HERO BANNER -->
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=220&section=header&text=Neural%20Conjecture%20Proposer&fontSize=42&fontColor=e8c040&animation=fadeIn&fontAlignY=38&desc=AI-Powered%20Mathematical%20Conjecture%20Generation%20Engine&descAlignY=58&descSize=16&descColor=a8a8c4"/>
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=220&section=header&text=Neural%20Conjecture%20Proposer&fontSize=42&fontColor=e8c040&animation=fadeIn&fontAlignY=38&desc=AI-Powered%20Mathematical%20Conjecture%20Generation%20Engine&descAlignY=58&descSize=16&descColor=a8a8c4" alt="Neural Conjecture Proposer"/>
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=7,11,20&height=220&section=header&text=Neural%20Conjecture%20Proposer&fontSize=42&fontColor=e8c040&animation=fadeIn&fontAlignY=38&desc=AI-Powered%20Mathematical%20Conjecture%20Generation%20Engine&descAlignY=58&descSize=16&descColor=a8a8c4" alt="Neural Conjecture Proposer"/>
 </picture>
 
 <!-- BADGES — ROW 1: Status -->
