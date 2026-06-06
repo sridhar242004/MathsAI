@@ -1,0 +1,2278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neural Conjecture Proposer</title>
+<meta name="description" content="Generate novel mathematical conjectures using Groq-powered AI">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<script>
+window.MathJax = {
+  tex: { inlineMath:[['$','$'],['\\(','\\)']], displayMath:[['$$','$$'],['\\[','\\]']], packages:{'[+]':['ams']} },
+  options: { skipHtmlTags:['script','noscript','style','textarea','pre'] }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  /* Voids */
+  --void:     #04040a;
+  --deep:     #07080f;
+  --surface:  #0c0e1a;
+  --elevated: #111526;
+  --overlay:  rgba(4,4,10,0.82);
+
+  /* Mathematical Gold — the singular accent */
+  --gold:        #c9a227;
+  --gold-l:      #e8c040;
+  --gold-d:      #8a6e18;
+  --gold-glow:   rgba(201,162,39,0.45);
+  --gold-sub:    rgba(201,162,39,0.08);
+  --gold-bdr:    rgba(201,162,39,0.22);
+
+  /* Electric Cyan — secondary */
+  --cyan:     #00d4f5;
+  --cyan-d:   #0098b0;
+  --cyan-glow:rgba(0,212,245,0.3);
+  --cyan-sub: rgba(0,212,245,0.06);
+  --cyan-bdr: rgba(0,212,245,0.18);
+
+  /* Deep Purple — tertiary */
+  --purple:   #7c3aed;
+  --purple-l: #9d5cf6;
+  --purple-glow:rgba(124,58,237,0.3);
+  --purple-sub:rgba(124,58,237,0.07);
+
+  /* Text scale */
+  --tx: #eeeef7;
+  --ts: #a8a8c4;
+  --tm: #52526e;
+
+  /* Borders */
+  --bdr:      rgba(255,255,255,0.065);
+  --bdr-h:    rgba(255,255,255,0.11);
+  --bdr-gold: rgba(201,162,39,0.22);
+  --bdr-cyan: rgba(0,212,245,0.18);
+
+  /* Functional */
+  --elec: var(--cyan);
+  --err:  #f87171;
+  --ok:   #34d399;
+  --warn: #fbbf24;
+
+  /* Typography */
+  --fd: 'Cormorant Garamond', Georgia, serif;
+  --fm: 'JetBrains Mono', 'Fira Code', monospace;
+  --fs: 'DM Sans', system-ui, sans-serif;
+
+  /* Layout */
+  --nb-h:  62px;
+  --rad:   12px;
+  --rad-l: 18px;
+  --rad-x: 24px;
+
+  /* Motion */
+  --ease:       cubic-bezier(0.4,0,0.2,1);
+  --ease-out:   cubic-bezier(0,0,0.2,1);
+  --ease-spring:cubic-bezier(0.34,1.56,0.64,1);
+  --dur:        0.25s;
+}
+
+/* ── 2. RESET & BASE ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--void);
+  color: var(--tx);
+  font-family: var(--fs);
+  font-weight: 400;
+  line-height: 1.65;
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── 3. CUSTOM SCROLLBAR ── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--void); }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--gold-d), var(--purple));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+
+/* ── 4. BACKGROUND CANVAS ── */
+#bgCanvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+/* ── 5. NAVBAR ── */
+.nb {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: var(--nb-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  gap: 1rem;
+  z-index: 1000;
+  background: rgba(4,4,10,0.72);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border-bottom: 1px solid var(--bdr);
+  transition: box-shadow 0.3s;
+}
+.nb::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--gold-d) 40%, var(--cyan-d) 60%, transparent 100%);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.nb-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.nb-sym {
+  font-family: var(--fd);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--gold-l);
+  text-shadow: 0 0 16px var(--gold-glow);
+  line-height: 1;
+  transition: text-shadow 0.3s;
+}
+.nb-brand:hover .nb-sym { text-shadow: 0 0 28px var(--gold-glow), 0 0 50px rgba(201,162,39,0.2); }
+.nb-txt {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--tx);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.nb-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  flex: 1;
+  justify-content: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nb-tabs::-webkit-scrollbar { display: none; }
+.ntb {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.88rem;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--tm);
+  font-size: 0.79rem;
+  font-family: var(--fs);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+  letter-spacing: 0.02em;
+  position: relative;
+}
+.ntb:hover { color: var(--ts); background: rgba(255,255,255,0.04); }
+.ntb.active {
+  color: var(--gold-l);
+  background: var(--gold-sub);
+}
+.ntb.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--gold), var(--gold-l));
+  border-radius: 1px;
+  box-shadow: 0 0 10px var(--gold-glow);
+}
+.ns {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+.sdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tm);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.sdot.ok  { background: var(--ok);  box-shadow: 0 0 10px rgba(52,211,153,0.6); }
+.sdot.err { background: var(--err); box-shadow: 0 0 10px rgba(248,113,113,0.6); }
+.sdot.loading {
+  background: var(--gold);
+  box-shadow: 0 0 10px var(--gold-glow);
+  animation: dotPulse 0.8s ease-in-out infinite;
+}
+@keyframes dotPulse {
+  0%,100% { opacity:1; transform:scale(1); }
+  50%     { opacity:0.4; transform:scale(1.4); }
+}
+
+/* ══════════════════════════════════════════
+   6. HERO — MATHEMATICAL OBSERVATORY
+══════════════════════════════════════════ */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  padding: var(--nb-h) 0 0;
+  isolation: isolate;
+  background: var(--void);
+}
+
+/* Nebula atmosphere */
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 55% at 72% 42%, rgba(124,58,237,0.16) 0%, transparent 68%),
+    radial-gradient(ellipse 50% 65% at 12% 22%, rgba(0,212,245,0.07) 0%, transparent 58%),
+    radial-gradient(ellipse 40% 48% at 85% 82%, rgba(201,162,39,0.09) 0%, transparent 52%),
+    radial-gradient(ellipse 55% 35% at 50% 105%, rgba(124,58,237,0.06) 0%, transparent 45%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Perspective coordinate grid */
+.hero-grid-plane {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.hero-grid-plane::before {
+  content: '';
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  left: -50%;
+  bottom: -30%;
+  background-image:
+    linear-gradient(rgba(0,212,245,0.038) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,245,0.038) 1px, transparent 1px);
+  background-size: 72px 72px;
+  transform: perspective(1000px) rotateX(58deg);
+  transform-origin: 50% 100%;
+  animation: gridFlow 28s linear infinite;
+  mask-image: linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 50%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 50%);
+}
+/* Axis center lines */
+.hero-grid-plane::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(201,162,39,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(201,162,39,0.06) 1px, transparent 1px);
+  background-size: 360px 360px;
+  transform: perspective(1000px) rotateX(58deg);
+  transform-origin: 50% 100%;
+  animation: gridFlow 28s linear infinite;
+  mask-image: linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 45%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 45%);
+}
+@keyframes gridFlow {
+  from { background-position: 0 0; }
+  to   { background-position: 72px 72px; }
+}
+
+/* Floating math symbol particles */
+.hero-sym-field {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+.hsym {
+  position: absolute;
+  bottom: -80px;
+  left: var(--x);
+  font-family: var(--fd);
+  font-size: var(--s, 1.8rem);
+  color: var(--c, rgba(201,162,39,0.18));
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0;
+  animation: symRise var(--d, 12s) var(--dl, 0s) linear infinite;
+}
+@keyframes symRise {
+  0%   { transform: translateY(0)       rotate(0deg);   opacity: 0; }
+  7%   { opacity: 1; }
+  88%  { opacity: 0.55; }
+  100% { transform: translateY(-115vh)  rotate(200deg); opacity: 0; }
+}
+
+/* Floating formula tags */
+.hero-formulas {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.formula-tag {
+  position: absolute;
+  background: rgba(255,255,255,0.022);
+  border: 1px solid var(--bdr);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-family: var(--fm);
+  font-size: 0.7rem;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+.formula-tag.visible { opacity: 1; }
+.ft-1 {
+  top: 15%; right: 4%;
+  color: rgba(201,162,39,0.75);
+  border-color: var(--bdr-gold);
+  box-shadow: 0 0 24px rgba(201,162,39,0.05), inset 0 1px 0 rgba(255,255,255,0.05);
+  animation: floatA 7.5s ease-in-out infinite;
+}
+.ft-2 {
+  top: 61%; right: 3%;
+  color: rgba(0,212,245,0.7);
+  border-color: var(--bdr-cyan);
+  box-shadow: 0 0 24px rgba(0,212,245,0.05), inset 0 1px 0 rgba(255,255,255,0.05);
+  animation: floatB 9.5s ease-in-out infinite;
+}
+.ft-3 {
+  bottom: 22%; left: 2.5%;
+  color: rgba(157,92,246,0.7);
+  border-color: rgba(124,58,237,0.22);
+  box-shadow: 0 0 24px rgba(124,58,237,0.05), inset 0 1px 0 rgba(255,255,255,0.04);
+  animation: floatA 8.8s ease-in-out infinite 1.5s;
+}
+.ft-4 {
+  top: 37%; left: 1.5%;
+  color: rgba(201,162,39,0.5);
+  border-color: var(--bdr-gold);
+  animation: floatB 11s ease-in-out infinite 0.8s;
+  font-size: 0.63rem;
+}
+@keyframes floatA {
+  0%,100% { transform: translateY(0)   rotate(-1.5deg); }
+  50%     { transform: translateY(-16px) rotate(1.5deg); }
+}
+@keyframes floatB {
+  0%,100% { transform: translateY(0)   rotate(1deg); }
+  50%     { transform: translateY(-22px) rotate(-1deg); }
+}
+
+/* Orbital System — right side */
+.hero-orbital {
+  position: absolute;
+  right: -6%;
+  top: 50%;
+  transform: translateY(-52%);
+  width: 540px;
+  height: 540px;
+  z-index: 3;
+  pointer-events: none;
+}
+.orb-ring {
+  position: absolute;
+  border-radius: 50%;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+}
+.or-1 {
+  width: 200px; height: 200px;
+  border: 1px solid rgba(201,162,39,0.4);
+  box-shadow: 0 0 30px rgba(201,162,39,0.06) inset, 0 0 30px rgba(201,162,39,0.06);
+  animation: orbSpin 18s linear infinite;
+}
+.or-2 {
+  width: 320px; height: 320px;
+  border: 1px dashed rgba(0,212,245,0.22);
+  animation: orbSpin 34s linear infinite reverse;
+}
+.or-3 {
+  width: 440px; height: 440px;
+  border: 1px solid rgba(124,58,237,0.14);
+  animation: orbSpin 55s linear infinite;
+}
+.or-4 {
+  width: 540px; height: 540px;
+  border: 1px dashed rgba(255,255,255,0.04);
+  animation: orbSpin 85s linear infinite reverse;
+}
+@keyframes orbSpin { to { transform: translate(-50%,-50%) rotate(360deg); } }
+
+/* Orbital traveling dots */
+.orb-dot {
+  position: absolute;
+  border-radius: 50%;
+  top: 50%; left: 50%;
+}
+.od-1 {
+  width: 7px; height: 7px;
+  background: var(--gold-l);
+  box-shadow: 0 0 14px var(--gold-glow), 0 0 4px var(--gold-l);
+  margin: -3.5px;
+  animation: orb1 18s linear infinite;
+}
+.od-2 {
+  width: 5px; height: 5px;
+  background: var(--cyan);
+  box-shadow: 0 0 12px var(--cyan-glow), 0 0 4px var(--cyan);
+  margin: -2.5px;
+  animation: orb2 34s linear infinite reverse;
+}
+.od-3 {
+  width: 4px; height: 4px;
+  background: var(--purple-l);
+  box-shadow: 0 0 10px var(--purple-glow);
+  margin: -2px;
+  animation: orb3 55s linear infinite;
+}
+@keyframes orb1 { to { transform: rotate(360deg) translateX(100px)  rotate(-360deg); } }
+@keyframes orb2 { to { transform: rotate(360deg) translateX(160px)  rotate(-360deg); } }
+@keyframes orb3 { to { transform: rotate(360deg) translateX(220px)  rotate(-360deg); } }
+
+/* Orbital center glow + symbol */
+.orb-glow {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  width: 150px; height: 150px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(201,162,39,0.1) 0%, transparent 70%);
+  animation: glowBeat 3.5s ease-in-out infinite;
+}
+@keyframes glowBeat {
+  0%,100% { transform: translate(-50%,-50%) scale(1);   opacity: 0.6; }
+  50%     { transform: translate(-50%,-50%) scale(1.5); opacity: 1; }
+}
+.orb-core {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  font-family: var(--fd);
+  font-size: 5rem;
+  font-weight: 700;
+  color: var(--gold-l);
+  text-shadow: 0 0 35px var(--gold-glow), 0 0 70px rgba(201,162,39,0.18);
+  user-select: none;
+  animation: coreAnim 4s ease-in-out infinite;
+  line-height: 1;
+}
+@keyframes coreAnim {
+  0%,100% { filter: brightness(0.9); }
+  50%     { filter: brightness(1.35); }
+}
+.orb-axis-h, .orb-axis-v {
+  position: absolute;
+  top: 50%; left: 50%;
+  background: linear-gradient(90deg, transparent, rgba(201,162,39,0.18), transparent);
+  border-radius: 1px;
+}
+.orb-axis-h {
+  width: 220px;
+  height: 1px;
+  transform: translate(-50%,-50%);
+}
+.orb-axis-v {
+  width: 1px;
+  height: 220px;
+  background: linear-gradient(180deg, transparent, rgba(201,162,39,0.18), transparent);
+  transform: translate(-50%,-50%);
+}
+
+/* Hero content */
+.hero-content-wrap {
+  position: relative;
+  z-index: 10;
+  max-width: 680px;
+  padding: 6rem 3rem 5rem;
+}
+
+/* Badge */
+.hbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.42rem 1.1rem;
+  background: var(--gold-sub);
+  border: 1px solid var(--bdr-gold);
+  border-radius: 100px;
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--gold-l);
+  margin-bottom: 2rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  position: relative;
+  overflow: hidden;
+}
+.hbadge::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(201,162,39,0.18), transparent);
+  animation: badgeSweep 3.5s ease-in-out infinite;
+}
+@keyframes badgeSweep {
+  0%   { left: -100%; }
+  100% { left: 200%;  }
+}
+
+/* Title */
+.htitle {
+  font-family: var(--fd);
+  font-size: clamp(3rem, 6.5vw, 5.8rem);
+  font-weight: 700;
+  line-height: 1.04;
+  color: var(--tx);
+  margin-bottom: 1.6rem;
+  letter-spacing: -0.02em;
+}
+.htl   { display: block; }
+.htl-2 { position: relative; }
+.gld {
+  background: linear-gradient(135deg, var(--gold-l) 0%, var(--gold) 40%, #a07818 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 22px rgba(201,162,39,0.28));
+}
+
+/* Subtitle */
+.hsub {
+  font-size: clamp(0.95rem, 1.7vw, 1.12rem);
+  color: var(--ts);
+  line-height: 1.8;
+  margin-bottom: 2.5rem;
+  max-width: 540px;
+  font-weight: 300;
+}
+
+/* CTA Buttons */
+.hcta {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 3.2rem;
+  align-items: center;
+}
+.btn-pg {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9rem 2.1rem;
+  background: linear-gradient(135deg, var(--gold-l) 0%, var(--gold) 55%, var(--gold-d) 100%);
+  background-size: 200% 200%;
+  border: none;
+  border-radius: var(--rad);
+  color: #07050a;
+  font-size: 0.88rem;
+  font-weight: 700;
+  font-family: var(--fs);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.22s var(--ease), box-shadow 0.28s;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  animation: gradShift 5s ease-in-out infinite;
+}
+@keyframes gradShift {
+  0%,100% { background-position: 0% 50%; }
+  50%     { background-position: 100% 50%; }
+}
+.btn-pg::before {
+  content: '';
+  position: absolute;
+  top: -40%; left: -80%;
+  width: 55%;
+  height: 180%;
+  background: rgba(255,255,255,0.18);
+  transform: skewX(-20deg);
+  animation: pgShine 4s ease-in-out infinite 0.8s;
+}
+@keyframes pgShine {
+  0%     { left: -80%; }
+  60%,100%{ left: 160%; }
+}
+.btn-pg:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(201,162,39,0.55), 0 4px 12px rgba(201,162,39,0.3);
+}
+.btn-pg:active { transform: translateY(-1px); }
+
+.btn-og {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9rem 2.1rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--bdr-h);
+  border-radius: var(--rad);
+  color: var(--ts);
+  font-size: 0.88rem;
+  font-weight: 500;
+  font-family: var(--fs);
+  cursor: pointer;
+  transition: all 0.25s var(--ease);
+  letter-spacing: 0.02em;
+}
+.btn-og:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: var(--bdr-gold);
+  color: var(--gold-l);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.3);
+}
+
+/* Stats row */
+.hstats {
+  display: flex;
+  gap: 2.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.hstat {
+  position: relative;
+}
+.hstat + .hstat::before {
+  content: '';
+  position: absolute;
+  left: -1.25rem;
+  top: 15%;
+  height: 70%;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, var(--bdr-gold), transparent);
+}
+.hstat-n {
+  display: block;
+  font-family: var(--fd);
+  font-size: 2.4rem;
+  font-weight: 700;
+  color: var(--gold-l);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.hstat-l {
+  font-size: 0.68rem;
+  color: var(--tm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 0.3rem;
+}
+
+/* Scroll indicator */
+.hscroll {
+  position: absolute;
+  bottom: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  z-index: 10;
+  pointer-events: none;
+}
+.hscroll-txt {
+  font-size: 0.62rem;
+  color: var(--tm);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-family: var(--fm);
+  animation: scrollFade 2.8s ease-in-out infinite;
+}
+.hscroll-line {
+  width: 1px;
+  background: linear-gradient(to bottom, var(--gold-d), transparent);
+  animation: lineGrow 2.8s ease-in-out infinite;
+}
+@keyframes scrollFade {
+  0%,100% { opacity: 0.4; }
+  50%     { opacity: 0.9; }
+}
+@keyframes lineGrow {
+  0%   { height: 0;    opacity: 0; }
+  30%  { height: 40px; opacity: 1; }
+  80%  { height: 40px; opacity: 0.7; }
+  100% { height: 40px; opacity: 0; }
+}
+
+/* TICKER */
+.ticker{overflow:hidden;border-top:1px solid var(--bdr);border-bottom:1px solid var(--bdr);padding:.28rem 0;background:rgba(5,8,16,.85);position:relative;z-index:1}
+.ticker-inner{display:flex;gap:2rem;white-space:nowrap;animation:tick 40s linear infinite;font-family:var(--fm);font-size:.77rem;color:var(--tm)}
+.ticker-inner span{color:var(--goldd)}
+@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* APP */
+.app{position:relative;z-index:1;padding:2rem 1.25rem 4rem;max-width:1200px;margin:0 auto}
+.tp{display:none}.tp.active{display:block}
+
+/* CARDS */
+.card{background:var(--bgc);border:1px solid var(--bdr);border-radius:var(--r);padding:1.4rem;box-shadow:0 4px 24px rgba(0,0,0,.4);transition:border-color .2s}
+.card:hover{border-color:rgba(212,175,55,.13)}
+.ctitle{font-family:var(--fd);font-size:1.3rem;font-weight:600;color:var(--tp);margin-bottom:.2rem}
+.csub{font-size:.8rem;color:var(--tm);margin-bottom:1.25rem}
+
+/* FORMS */
+.flbl{display:block;font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ts);margin-bottom:.4rem}
+.fsel,.finp,.ftxt{width:100%;background:var(--bg0);border:1px solid var(--bdr);color:var(--tp);border-radius:var(--rs);padding:.55rem .85rem;font-family:var(--fb);font-size:.88rem;transition:all .18s;appearance:none}
+.fsel:focus,.finp:focus,.ftxt:focus{outline:none;border-color:var(--bdrg);box-shadow:0 0 0 3px rgba(212,175,55,.09)}
+.fsel option{background:var(--bgc);color:var(--tp)}
+.ftxt{min-height:76px;resize:vertical}
+.rl{display:flex;justify-content:space-between;align-items:center;margin-bottom:.45rem}
+.rv{font-family:var(--fm);font-size:.78rem;color:var(--gold);background:var(--goldg);padding:.1rem .45rem;border-radius:var(--rs)}
+input[type=range]{width:100%;height:4px;background:var(--bdr);border-radius:2px;outline:none;cursor:pointer;-webkit-appearance:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--gold);cursor:pointer;box-shadow:0 0 5px rgba(212,175,55,.4)}
+.rinfo{display:flex;justify-content:space-between;font-size:.67rem;color:var(--tm);margin-top:.2rem}
+
+/* DOMAINS */
+.dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:.45rem}
+.dbtn{background:var(--bg0);border:1px solid var(--bdr);color:var(--ts);font-size:.78rem;font-weight:500;padding:.45rem .65rem;border-radius:var(--rs);cursor:pointer;transition:all .18s;text-align:center;display:flex;align-items:center;gap:.35rem}
+.dbtn:hover{border-color:var(--bdrg);color:var(--tp)}
+.dbtn.active{background:var(--goldg);border-color:var(--gold);color:var(--gold)}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem}
+.chip{background:var(--bg0);border:1px solid var(--bdr);color:var(--ts);font-size:.76rem;padding:.27rem .72rem;border-radius:20px;cursor:pointer;transition:all .18s}
+.chip.active{background:var(--elecg);border-color:var(--elec);color:var(--elec)}
+
+/* GENERATE BTN */
+.bgbtn{width:100%;background:linear-gradient(135deg,rgba(212,175,55,.12),rgba(212,175,55,.04));border:1px solid var(--bdrg);color:var(--gold);font-family:var(--fd);font-size:1.08rem;font-weight:600;letter-spacing:.04em;padding:.95rem;border-radius:var(--r);cursor:pointer;transition:all .28s;display:flex;align-items:center;justify-content:center;gap:.65rem;position:relative;overflow:hidden}
+.bgbtn::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(212,175,55,.08),transparent);transition:left .5s}
+.bgbtn:hover::before{left:100%}
+.bgbtn:hover{background:linear-gradient(135deg,rgba(212,175,55,.22),rgba(212,175,55,.08));box-shadow:0 0 28px rgba(212,175,55,.18);transform:translateY(-1px)}
+.bgbtn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.spin{width:17px;height:17px;border:2px solid rgba(212,175,55,.3);border-top-color:var(--gold);border-radius:50%;animation:spinr .75s linear infinite}
+@keyframes spinr{to{transform:rotate(360deg)}}
+.ldots{display:inline-flex;gap:.28rem}
+.ldots span{width:5px;height:5px;background:var(--gold);border-radius:50%;animation:dp 1.2s ease-in-out infinite}
+.ldots span:nth-child(2){animation-delay:.2s}
+.ldots span:nth-child(3){animation-delay:.4s}
+@keyframes dp{0%,80%,100%{transform:scale(.55);opacity:.35}40%{transform:scale(1);opacity:1}}
+
+/* CONJECTURE OUTPUT */
+.cout{background:var(--bg2);border:1px solid var(--bdrg);border-radius:var(--r);padding:1.65rem;position:relative;overflow:hidden}
+.cout::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}
+.chdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.1rem;flex-wrap:wrap;gap:.65rem}
+.ctlx{font-family:var(--fd);font-size:1.45rem;font-weight:600;color:var(--tp);line-height:1.2}
+.cmeta{display:flex;flex-wrap:wrap;gap:.35rem}
+.mbadge{font-size:.7rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding:.22rem .6rem;border-radius:20px}
+.mbd{background:var(--goldg);color:var(--gold);border:1px solid var(--bdrg)}
+.mbug{background:rgba(16,185,129,.1);color:var(--ok);border:1px solid rgba(16,185,129,.3)}
+.mbgr{background:rgba(245,158,11,.1);color:var(--warn);border:1px solid rgba(245,158,11,.3)}
+.mbre{background:rgba(239,68,68,.1);color:var(--err);border:1px solid rgba(239,68,68,.3)}
+.mbml{background:rgba(79,156,249,.1);color:var(--elec);border:1px solid var(--bdre)}
+.csec{margin-bottom:1.1rem}
+.cstitle{font-size:.7rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--gold);margin-bottom:.45rem;display:flex;align-items:center;gap:.35rem}
+.cstitle::after{content:'';flex:1;height:1px;background:var(--bdrg);opacity:.45}
+.sbox{background:var(--bg0);border:1px solid var(--bdr);border-left:3px solid var(--gold);border-radius:var(--rs);padding:.9rem 1.1rem;font-size:.93rem;line-height:1.75;color:var(--tp)}
+.tblk{font-size:.88rem;line-height:1.75;color:var(--ts)}
+.kwlist{display:flex;flex-wrap:wrap;gap:.35rem}
+.kwtag{background:var(--bg0);border:1px solid var(--bdr);color:var(--ts);font-size:.73rem;padding:.18rem .55rem;border-radius:20px;font-family:var(--fm)}
+.cactions{display:flex;gap:.45rem;flex-wrap:wrap;margin-top:1.1rem;padding-top:1.1rem;border-top:1px solid var(--bdr)}
+.abt{background:var(--bg0);border:1px solid var(--bdr);color:var(--ts);font-size:.78rem;font-weight:500;padding:.38rem .85rem;border-radius:var(--rs);cursor:pointer;transition:all .18s;display:flex;align-items:center;gap:.35rem}
+.abt:hover{border-color:var(--bdrg);color:var(--gold);background:var(--goldg)}
+.abt.liked{border-color:var(--err);color:var(--err);background:rgba(239,68,68,.1)}
+
+/* EMPTY */
+.empty{text-align:center;padding:2.75rem 1rem;color:var(--tm)}
+.empty-icon{font-size:2.75rem;margin-bottom:.75rem;opacity:.38}
+.empty-title{font-family:var(--fd);font-size:1.25rem;color:var(--ts);margin-bottom:.4rem}
+.empty-sub{font-size:.82rem;color:var(--tm)}
+
+/* HISTORY */
+.hsearch{position:relative;margin-bottom:.9rem}
+.hsearch input{width:100%;background:var(--bg0);border:1px solid var(--bdr);color:var(--tp);padding:.55rem .85rem .55rem 2.3rem;border-radius:var(--rs);font-size:.88rem}
+.hsearch input:focus{outline:none;border-color:var(--bdrg)}
+.hsrch-i{position:absolute;left:.7rem;top:50%;transform:translateY(-50%);color:var(--tm);font-size:.88rem}
+.hcard{background:var(--bgc);border:1px solid var(--bdr);border-radius:var(--r);padding:1rem 1.15rem;cursor:pointer;transition:all .18s;margin-bottom:.65rem}
+.hcard:hover{border-color:var(--bdrg);background:var(--bgh)}
+.hcard-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.4rem;gap:.65rem}
+.hcard-title{font-family:var(--fd);font-size:.98rem;font-weight:600;color:var(--tp);line-height:1.3}
+.hcard-time{font-size:.7rem;color:var(--tm);white-space:nowrap;flex-shrink:0}
+.hcard-prev{font-size:.8rem;color:var(--tm);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hcard-ft{display:flex;justify-content:space-between;align-items:center;margin-top:.65rem}
+.hdel{background:none;border:none;color:var(--tm);font-size:.78rem;cursor:pointer;padding:.18rem .38rem;border-radius:4px;transition:all .18s}
+.hdel:hover{color:var(--err);background:rgba(239,68,68,.1)}
+
+/* ANALYTICS */
+.agrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.9rem;margin-bottom:1.75rem}
+.acard{background:var(--bgc);border:1px solid var(--bdr);border-radius:var(--r);padding:1.1rem;text-align:center}
+.anum{font-family:var(--fd);font-size:2.1rem;font-weight:600;color:var(--gold);display:block;line-height:1}
+.albl{font-size:.72rem;color:var(--tm);text-transform:uppercase;letter-spacing:.08em;margin-top:.35rem}
+.cbox{background:var(--bgc);border:1px solid var(--bdr);border-radius:var(--r);padding:1.25rem;margin-bottom:.9rem}
+.cboxtitle{font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--ts);margin-bottom:.9rem}
+
+/* LEARN */
+.lcard{background:var(--bgc);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:.9rem;transition:border-color .18s}
+.lcard:hover{border-color:var(--bdrg)}
+.lcard-hdr{padding:.9rem 1.1rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.lcard-title{font-family:var(--fd);font-size:1rem;font-weight:600;color:var(--tp);display:flex;align-items:center;gap:.65rem}
+.lcard-body{padding:0 1.1rem 1.1rem;border-top:1px solid var(--bdr);display:none}
+.lcard-body.open{display:block}
+.lmex{background:var(--bg0);border:1px solid var(--bdr);border-radius:var(--rs);padding:.65rem .9rem;font-family:var(--fm);font-size:.82rem;color:var(--elec);margin:.65rem 0;overflow-x:auto}
+
+/* SETTINGS */
+.stitle{font-size:.73rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:.9rem;display:flex;align-items:center;gap:.45rem}
+.stitle::after{content:'';flex:1;height:1px;background:var(--bdr)}
+.akwrap{position:relative}
+.aktgl{position:absolute;right:.7rem;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--tm);cursor:pointer;padding:.18rem}
+.aktgl:hover{color:var(--gold)}
+.msel{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.65rem}
+.mcard{background:var(--bg0);border:1px solid var(--bdr);border-radius:var(--r);padding:.9rem;cursor:pointer;transition:all .18s}
+.mcard.active{border-color:var(--gold);background:var(--goldg)}
+.mcard-n{font-family:var(--fm);font-size:.78rem;color:var(--tp);font-weight:500;margin-bottom:.2rem}
+.mcard-d{font-size:.72rem;color:var(--tm)}
+
+/* BATCH */
+.bprog{background:var(--bg0);border-radius:var(--rs);height:5px;overflow:hidden;margin:.9rem 0}
+.bprog-b{height:100%;background:linear-gradient(90deg,var(--goldd),var(--gold));width:0%;transition:width .3s;border-radius:var(--rs)}
+.bres{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:.9rem;margin-top:.9rem}
+.bcardx{background:var(--bgc);border:1px solid var(--bdr);border-radius:var(--r);padding:1rem;cursor:pointer;transition:all .18s}
+.bcardx:hover{border-color:var(--bdrg)}
+.bnum{font-family:var(--fm);font-size:.7rem;color:var(--gold);font-weight:600;margin-bottom:.4rem}
+.bct{font-family:var(--fd);font-size:.97rem;font-weight:600;color:var(--tp);margin-bottom:.4rem}
+.bcp{font-size:.78rem;color:var(--tm);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* FOOTER */
+footer{position:relative;z-index:1;border-top:1px solid var(--bdr);padding:2.5rem 1.5rem;text-align:center}
+.fq{font-family:var(--fd);font-size:1.15rem;font-style:italic;color:var(--ts);margin-bottom:.4rem}
+.fa{font-size:.78rem;color:var(--tm)}
+
+/* TOAST */
+.tc{position:fixed;bottom:1.25rem;right:1.25rem;z-index:2000;display:flex;flex-direction:column;gap:.4rem}
+.toast{background:var(--bgc);border:1px solid var(--bdr);border-radius:var(--r);padding:.65rem 1rem;font-size:.82rem;color:var(--tp);box-shadow:0 4px 24px rgba(0,0,0,.4);display:flex;align-items:center;gap:.5rem;animation:slIn .2s ease;max-width:300px}
+.toast.ok{border-color:rgba(16,185,129,.45)}
+.toast.er{border-color:rgba(239,68,68,.45)}
+@keyframes slIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* MODAL */
+.movl{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:1500;display:flex;align-items:center;justify-content:center;padding:1.25rem;backdrop-filter:blur(5px)}
+.mbox{background:var(--bgc);border:1px solid var(--bdrg);border-radius:var(--rl);padding:1.75rem;max-width:720px;width:100%;max-height:85vh;overflow-y:auto;position:relative}
+.mclose{position:absolute;top:.85rem;right:.85rem;background:none;border:none;color:var(--tm);font-size:1.1rem;cursor:pointer;transition:color .18s}
+.mclose:hover{color:var(--tp)}
+
+/* SECTION HDR */
+.shdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.4rem;flex-wrap:wrap;gap:.75rem}
+.shdr-t{font-family:var(--fd);font-size:1.75rem;font-weight:600;color:var(--tp)}
+.shdr-s{font-size:.8rem;color:var(--tm)}
+.dvd{height:1px;background:var(--bdr);margin:1.25rem 0}
+.anim{animation:fiu .38s ease both}
+@keyframes fiu{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+
+/* RESPONSIVE */
+@media(max-width:768px){
+  .nb{padding:0 .85rem}
+  .nb-brand span.nb-txt{display:none}
+  .hero{padding:5rem 1rem 3rem}
+  .hstats{gap:1.5rem}
+  .app{padding:1.4rem .9rem 3rem}
+  .bres{grid-template-columns:1fr}
+  .dgrid{grid-template-columns:repeat(auto-fill,minmax(108px,1fr))}
+}
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+
+<!-- ══ NAVBAR ══ -->
+<nav class="nb">
+  <div class="nb-brand" onclick="scrollToHero()">
+    <span class="nb-sym">∑</span>
+    <span class="nb-txt">Neural Conjecture Proposer</span>
+  </div>
+  <div class="nb-tabs">
+    <button class="ntb active" onclick="switchTab('gen',this)"><i class="bi bi-lightning-charge"></i> Generate</button>
+    <button class="ntb" onclick="switchTab('batch',this)"><i class="bi bi-grid-3x3-gap"></i> Batch</button>
+    <button class="ntb" onclick="switchTab('analytics',this)"><i class="bi bi-graph-up"></i> Analytics</button>
+    <button class="ntb" onclick="switchTab('hist',this)"><i class="bi bi-clock-history"></i> History</button>
+    <button class="ntb" onclick="switchTab('learn',this)"><i class="bi bi-book"></i> Learn</button>
+    <button class="ntb" onclick="switchTab('settings',this)"><i class="bi bi-gear"></i> Settings</button>
+  </div>
+  <div class="ns">
+    <span class="sdot" id="sdot"></span>
+    <span id="stxt" style="display:none;font-size:.7rem;font-family:var(--fm)"></span>
+  </div>
+</nav>
+
+<!-- ══ HERO — MATHEMATICAL OBSERVATORY ══ -->
+<section class="hero" id="heroSec">
+
+  <!-- Layer 1: Perspective coordinate grid -->
+  <div class="hero-grid-plane" aria-hidden="true"></div>
+
+  <!-- Layer 2: Floating math symbol particles -->
+  <div class="hero-sym-field" aria-hidden="true">
+    <span class="hsym" style="--x:5%;  --s:1.7rem; --d:12s; --dl:0s;    --c:rgba(201,162,39,0.22)">∑</span>
+    <span class="hsym" style="--x:14%; --s:2.2rem; --d:9s;  --dl:2.1s;  --c:rgba(0,212,245,0.16)">∫</span>
+    <span class="hsym" style="--x:23%; --s:1.4rem; --d:14s; --dl:4.5s;  --c:rgba(201,162,39,0.16)">∇</span>
+    <span class="hsym" style="--x:31%; --s:1.9rem; --d:11s; --dl:1.2s;  --c:rgba(157,92,246,0.2)">π</span>
+    <span class="hsym" style="--x:40%; --s:2.1rem; --d:13s; --dl:6.8s;  --c:rgba(201,162,39,0.19)">∞</span>
+    <span class="hsym" style="--x:49%; --s:1.5rem; --d:10s; --dl:3.3s;  --c:rgba(0,212,245,0.19)">∂</span>
+    <span class="hsym" style="--x:57%; --s:2.6rem; --d:16s; --dl:7.5s;  --c:rgba(201,162,39,0.12)">∈</span>
+    <span class="hsym" style="--x:65%; --s:1.3rem; --d:8s;  --dl:5.1s;  --c:rgba(157,92,246,0.17)">∀</span>
+    <span class="hsym" style="--x:73%; --s:2rem;   --d:15s; --dl:2.7s;  --c:rgba(201,162,39,0.21)">∃</span>
+    <span class="hsym" style="--x:81%; --s:1.6rem; --d:11s; --dl:9.2s;  --c:rgba(0,212,245,0.14)">⊕</span>
+    <span class="hsym" style="--x:89%; --s:1.8rem; --d:13s; --dl:0.6s;  --c:rgba(201,162,39,0.17)">λ</span>
+    <span class="hsym" style="--x:10%; --s:2.4rem; --d:17s; --dl:1.8s;  --c:rgba(201,162,39,0.13)">φ</span>
+    <span class="hsym" style="--x:47%; --s:1.4rem; --d:10s; --dl:11.5s; --c:rgba(0,212,245,0.21)">ω</span>
+    <span class="hsym" style="--x:58%; --s:2.3rem; --d:14s; --dl:4.2s;  --c:rgba(201,162,39,0.11)">Ω</span>
+    <span class="hsym" style="--x:76%; --s:1.6rem; --d:12s; --dl:6.6s;  --c:rgba(157,92,246,0.19)">σ</span>
+    <span class="hsym" style="--x:91%; --s:1.3rem; --d:9s;  --dl:3.9s;  --c:rgba(201,162,39,0.24)">√</span>
+    <span class="hsym" style="--x:3%;  --s:2rem;   --d:18s; --dl:10.3s; --c:rgba(0,212,245,0.11)">∮</span>
+    <span class="hsym" style="--x:38%; --s:1.5rem; --d:11s; --dl:7.8s;  --c:rgba(201,162,39,0.18)">⇒</span>
+    <span class="hsym" style="--x:68%; --s:1.9rem; --d:13s; --dl:0.3s;  --c:rgba(157,92,246,0.14)">α</span>
+    <span class="hsym" style="--x:85%; --s:1.4rem; --d:10s; --dl:8.4s;  --c:rgba(201,162,39,0.2)">β</span>
+  </div>
+
+  <!-- Layer 3: Floating formula tags -->
+  <div class="hero-formulas" aria-hidden="true">
+    <div class="formula-tag ft-1">e<sup>iπ</sup> + 1 = 0</div>
+    <div class="formula-tag ft-2">∑<sub>n=1</sub><sup>∞</sup> 1/n² = π²/6</div>
+    <div class="formula-tag ft-3">∇²φ = ρ/ε₀</div>
+    <div class="formula-tag ft-4">∀ε>0 ∃δ>0: |x−a|&lt;δ ⟹ |f(x)−L|&lt;ε</div>
+  </div>
+
+  <!-- Layer 4: Horizontal scan line -->
+  <div class="hero-scanline" aria-hidden="true"></div>
+
+  <!-- Layer 5: Orbital decoration (right side) -->
+  <div class="hero-orbital" aria-hidden="true">
+    <div class="orb-glow"></div>
+    <div class="orb-ring or-1"></div>
+    <div class="orb-ring or-2"></div>
+    <div class="orb-ring or-3"></div>
+    <div class="orb-ring or-4"></div>
+    <div class="orb-dot od-1"></div>
+    <div class="orb-dot od-2"></div>
+    <div class="orb-dot od-3"></div>
+    <div class="orb-axis-h"></div>
+    <div class="orb-axis-v"></div>
+    <div class="orb-core">∑</div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="hero-content-wrap">
+    <div class="hbadge">⚡ Powered by Groq × LLaMA 3 / Mixtral</div>
+
+    <h1 class="htitle">
+      <span class="htl htl-1">Neural Conjecture</span>
+      <span class="htl htl-2 gld">Proposer</span>
+    </h1>
+
+    <p class="hsub">Harness large language models to generate novel, mathematically rigorous conjectures across all domains of mathematics.</p>
+
+    <div class="hcta">
+      <button class="btn-pg" onclick="scrollToApp()">
+        <i class="bi bi-lightning-charge-fill"></i> Start Generating
+      </button>
+      <button class="btn-og" onclick="switchTab('learn',document.querySelectorAll('.ntb')[4]);scrollToApp()">
+        <i class="bi bi-book"></i> Explore Learn
+      </button>
+    </div>
+
+    <div class="hstats">
+      <div class="hstat">
+        <span class="hstat-n" id="hTotal">0</span>
+        <div class="hstat-l">Conjectures Generated</div>
+      </div>
+      <div class="hstat">
+        <span class="hstat-n">8</span>
+        <div class="hstat-l">Math Domains</div>
+      </div>
+      <div class="hstat">
+        <span class="hstat-n">∞</span>
+        <div class="hstat-l">Possibilities</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scroll Indicator -->
+  <div class="hscroll" aria-hidden="true">
+    <span class="hscroll-txt">explore below</span>
+    <div class="hscroll-line"></div>
+  </div>
+
+</section>
+
+<!-- TICKER -->
+<div class="ticker"><div class="ticker-inner" id="tickerIn"></div></div>
+
+<!-- ══ APP ══ -->
+<section class="app" id="appSec">
+
+<!-- ─── GENERATE TAB ─── -->
+<div class="tp active anim" id="tp-gen">
+  <div class="shdr">
+    <div><div class="shdr-t">Generate Conjecture</div><div class="shdr-s">Configure parameters and generate a novel mathematical conjecture</div></div>
+  </div>
+  <div class="row g-3">
+    <div class="col-lg-5">
+
+      <div class="card mb-3">
+        <div class="ctitle">Mathematical Domain</div><div class="csub">Select the area of mathematics</div>
+        <div class="dgrid">
+          <button class="dbtn active" data-d="Number Theory" onclick="selDomain(this)"><span>ℕ</span> Number Theory</button>
+          <button class="dbtn" data-d="Topology" onclick="selDomain(this)"><span>∮</span> Topology</button>
+          <button class="dbtn" data-d="Abstract Algebra" onclick="selDomain(this)"><span>∘</span> Algebra</button>
+          <button class="dbtn" data-d="Real Analysis" onclick="selDomain(this)"><span>∫</span> Analysis</button>
+          <button class="dbtn" data-d="Combinatorics" onclick="selDomain(this)"><span>₂</span> Combinatorics</button>
+          <button class="dbtn" data-d="Differential Geometry" onclick="selDomain(this)"><span>∇</span> Geometry</button>
+          <button class="dbtn" data-d="Probability Theory" onclick="selDomain(this)"><span>P</span> Probability</button>
+          <button class="dbtn" data-d="Set Theory" onclick="selDomain(this)"><span>∈</span> Set Theory</button>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="ctitle">Conjecture Type</div><div class="csub">What kind of mathematical statement</div>
+        <div class="chips" id="typeChips">
+          <span class="chip active" data-t="Existence" onclick="selType(this)">Existence</span>
+          <span class="chip" data-t="Inequality" onclick="selType(this)">Inequality</span>
+          <span class="chip" data-t="Equivalence" onclick="selType(this)">Equivalence</span>
+          <span class="chip" data-t="Asymptotic" onclick="selType(this)">Asymptotic</span>
+          <span class="chip" data-t="Classification" onclick="selType(this)">Classification</span>
+          <span class="chip" data-t="Structural" onclick="selType(this)">Structural</span>
+          <span class="chip" data-t="Open-ended" onclick="selType(this)">Open-ended</span>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="ctitle">Parameters</div><div class="csub">Fine-tune generation behavior</div>
+        <div class="mb-3">
+          <div class="rl"><label class="flbl" style="margin:0">Complexity Level</label><span class="rv" id="cxLbl">Graduate</span></div>
+          <input type="range" id="cxSlider" min="1" max="4" value="2" oninput="updCx(this.value)">
+          <div class="rinfo"><span>UG</span><span>Graduate</span><span>Research</span><span>Millennium</span></div>
+        </div>
+        <div class="mb-3">
+          <div class="rl"><label class="flbl" style="margin:0">Creativity (Temperature)</label><span class="rv" id="tmpLbl">0.7</span></div>
+          <input type="range" id="tmpSlider" min="0.1" max="1.5" step="0.1" value="0.7" oninput="updTmp(this.value)">
+          <div class="rinfo"><span>Conservative</span><span>Balanced</span><span>Creative</span></div>
+        </div>
+        <div>
+          <label class="flbl">Max Tokens</label>
+          <select class="fsel" id="maxTok">
+            <option value="800">800 — Brief</option>
+            <option value="1200" selected>1200 — Standard</option>
+            <option value="2000">2000 — Detailed</option>
+            <option value="3000">3000 — Exhaustive</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="ctitle">Custom Context</div><div class="csub">Optional — specify focus, constraints, or references</div>
+        <textarea class="ftxt" id="ctxInp" rows="3" placeholder="e.g., 'Focus on prime gaps and Cramér's model' or 'Related to Fourier analysis on compact groups'..."></textarea>
+      </div>
+
+    </div>
+    <div class="col-lg-7">
+      <button class="bgbtn mb-3" id="genBtn" onclick="generateConjecture()">
+        <span id="genBtnC"><i class="bi bi-lightning-charge-fill"></i> Generate Conjecture</span>
+      </button>
+      <div id="outArea">
+        <div class="empty">
+          <div class="empty-icon">∑</div>
+          <div class="empty-title">Ready to Generate</div>
+          <div class="empty-sub">Configure parameters and click Generate to create a novel AI-powered mathematical conjecture.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── BATCH TAB ─── -->
+<div class="tp" id="tp-batch">
+  <div class="shdr"><div><div class="shdr-t">Batch Generation</div><div class="shdr-s">Generate multiple conjectures in one run</div></div></div>
+  <div class="card mb-3">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="flbl">Domain</label>
+        <select class="fsel" id="bDom">
+          <option>Number Theory</option><option>Topology</option><option>Abstract Algebra</option>
+          <option>Real Analysis</option><option>Combinatorics</option><option>Differential Geometry</option>
+          <option>Probability Theory</option><option>Set Theory</option><option value="Mixed">Mixed (Varied)</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="flbl">Count</label>
+        <select class="fsel" id="bCnt">
+          <option value="2">2 Conjectures</option><option value="3" selected>3 Conjectures</option>
+          <option value="4">4 Conjectures</option><option value="5">5 Conjectures</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="flbl">Complexity</label>
+        <select class="fsel" id="bCx">
+          <option>Undergraduate</option><option selected>Graduate</option><option>Research-level</option>
+        </select>
+      </div>
+    </div>
+    <div class="mt-3">
+      <label class="flbl">Common Theme (Optional)</label>
+      <input type="text" class="finp" id="bTheme" placeholder="e.g., 'prime gaps', 'manifold invariants', 'spectral theory'">
+    </div>
+    <div class="bprog"><div class="bprog-b" id="bProgB"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:.73rem;color:var(--tm)">
+      <span id="bStat">Ready</span><span id="bCnt2">0/0</span>
+    </div>
+    <button class="bgbtn mt-3" id="batchBtn" onclick="runBatch()">
+      <span id="bBtnC"><i class="bi bi-grid-3x3-gap-fill"></i> Generate Batch</span>
+    </button>
+  </div>
+  <div class="bres" id="bRes">
+    <div style="grid-column:1/-1"><div class="empty"><div class="empty-icon" style="font-size:2rem">⊞</div><div class="empty-title">No batch results yet</div><div class="empty-sub">Configure and run a batch to generate multiple conjectures</div></div></div>
+  </div>
+</div>
+
+<!-- ─── ANALYTICS TAB ─── -->
+<div class="tp" id="tp-analytics">
+  <div class="shdr">
+    <div><div class="shdr-t">Analytics</div><div class="shdr-s">Insights from your generation history</div></div>
+    <button class="abt" onclick="renderAnalytics()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+  </div>
+  <div class="agrid" id="aCards"></div>
+  <div class="row g-3">
+    <div class="col-md-6"><div class="cbox"><div class="cboxtitle">Domain Distribution</div><canvas id="domChart" height="250"></canvas></div></div>
+    <div class="col-md-6"><div class="cbox"><div class="cboxtitle">Complexity Breakdown</div><canvas id="cxChart" height="250"></canvas></div></div>
+    <div class="col-12"><div class="cbox"><div class="cboxtitle">Activity — Last 7 Days</div><canvas id="actChart" height="115"></canvas></div></div>
+  </div>
+</div>
+
+<!-- ─── HISTORY TAB ─── -->
+<div class="tp" id="tp-hist">
+  <div class="shdr">
+    <div><div class="shdr-t">History</div><div class="shdr-s" id="histCnt">0 conjectures saved</div></div>
+    <div style="display:flex;gap:.45rem;flex-wrap:wrap">
+      <button class="abt" onclick="exportHist()"><i class="bi bi-download"></i> Export JSON</button>
+      <button class="abt" onclick="clearHist()" style="color:var(--err)"><i class="bi bi-trash3"></i> Clear All</button>
+    </div>
+  </div>
+  <div class="hsearch"><i class="bi bi-search hsrch-i"></i><input type="text" placeholder="Search conjectures, domains, keywords..." id="hSearch" oninput="filterHist()"></div>
+  <div style="display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.9rem" id="hFilters">
+    <span class="chip active" data-f="all" onclick="filterDom('all',this)">All</span>
+    <span class="chip" data-f="Number Theory" onclick="filterDom('Number Theory',this)">Number Theory</span>
+    <span class="chip" data-f="Topology" onclick="filterDom('Topology',this)">Topology</span>
+    <span class="chip" data-f="Abstract Algebra" onclick="filterDom('Abstract Algebra',this)">Algebra</span>
+    <span class="chip" data-f="Real Analysis" onclick="filterDom('Real Analysis',this)">Analysis</span>
+    <span class="chip" data-f="Combinatorics" onclick="filterDom('Combinatorics',this)">Combinatorics</span>
+  </div>
+  <div id="histList"></div>
+</div>
+
+<!-- ─── LEARN TAB ─── -->
+<div class="tp" id="tp-learn">
+  <div class="shdr"><div><div class="shdr-t">Mathematical Foundation</div><div class="shdr-s">Explore domains, famous conjectures, and LaTeX notation</div></div></div>
+  <div class="row g-3 mb-4">
+    <div class="col-md-4"><div class="card" style="text-align:center;padding:1.4rem"><div style="font-size:2.3rem;margin-bottom:.5rem">ℕ</div><div class="ctitle" style="font-size:1.05rem">Number Theory</div><div style="font-size:.8rem;color:var(--tm)">The study of integers, primes, divisibility, and number-theoretic functions — the queen of mathematics.</div></div></div>
+    <div class="col-md-4"><div class="card" style="text-align:center;padding:1.4rem"><div style="font-size:2.3rem;margin-bottom:.5rem">∮</div><div class="ctitle" style="font-size:1.05rem">Topology</div><div style="font-size:.8rem;color:var(--tm)">Geometric properties preserved under continuous transformations — the mathematics of shape and connectivity.</div></div></div>
+    <div class="col-md-4"><div class="card" style="text-align:center;padding:1.4rem"><div style="font-size:2.3rem;margin-bottom:.5rem">∫</div><div class="ctitle" style="font-size:1.05rem">Analysis</div><div style="font-size:.8rem;color:var(--tm)">Rigorous study of limits, continuity, differentiation, and integration — the language of change.</div></div></div>
+  </div>
+  <div class="shdr mb-3"><div><div style="font-family:var(--fd);font-size:1.4rem;font-weight:600">Famous Conjectures</div><div class="shdr-s">Mathematical problems that shaped history</div></div></div>
+  <div id="learnAccordion"></div>
+  <div class="shdr mt-4 mb-3"><div><div style="font-family:var(--fd);font-size:1.4rem;font-weight:600">LaTeX Quick Reference</div><div class="shdr-s">Common notation used in mathematical statements</div></div></div>
+  <div class="row g-2" id="latexRef"></div>
+</div>
+
+<!-- ─── SETTINGS TAB ─── -->
+<div class="tp" id="tp-settings">
+  <div class="shdr"><div><div class="shdr-t">Settings</div><div class="shdr-s">Configure API, models, and defaults</div></div></div>
+  <div class="row g-3">
+    <div class="col-lg-8">
+
+      <div class="card mb-3">
+        <div class="stitle"><i class="bi bi-key"></i> API Configuration</div>
+        <div class="mb-3">
+          <label class="flbl">Groq API Key</label>
+          <div class="akwrap">
+            <input type="password" class="finp" id="apiKey" placeholder="gsk_..." style="padding-right:2.4rem">
+            <button class="aktgl" onclick="toggleKey()"><i class="bi bi-eye" id="keyEye"></i></button>
+          </div>
+          <div style="font-size:.72rem;color:var(--tm);margin-top:.35rem">Free API key at <a href="https://console.groq.com" target="_blank" style="color:var(--elec)">console.groq.com</a> — stored locally, never transmitted to third parties.</div>
+        </div>
+        <div class="mb-3">
+          <label class="flbl">API Endpoint</label>
+          <input type="text" class="finp" id="apiEp" value="https://api.groq.com/openai/v1/chat/completions">
+        </div>
+        <button class="abt" onclick="testKey()"><i class="bi bi-check-circle"></i> Test Connection</button>
+      </div>
+
+      <div class="card mb-3">
+        <div class="stitle"><i class="bi bi-cpu"></i> AI Model</div>
+        <div class="msel">
+          <div class="mcard active" data-m="llama3-70b-8192" onclick="selModel(this)"><div class="mcard-n">llama3-70b-8192</div><div class="mcard-d">LLaMA 3 70B — Best quality</div></div>
+          <div class="mcard" data-m="llama3-8b-8192" onclick="selModel(this)"><div class="mcard-n">llama3-8b-8192</div><div class="mcard-d">LLaMA 3 8B — Fastest</div></div>
+          <div class="mcard" data-m="mixtral-8x7b-32768" onclick="selModel(this)"><div class="mcard-n">mixtral-8x7b-32768</div><div class="mcard-d">Mixtral MoE — Long context</div></div>
+          <div class="mcard" data-m="gemma2-9b-it" onclick="selModel(this)"><div class="mcard-n">gemma2-9b-it</div><div class="mcard-d">Gemma 2 — Precise & efficient</div></div>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="stitle"><i class="bi bi-sliders"></i> Defaults & System Prompt</div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="flbl">Default Domain</label>
+            <select class="fsel" id="defDom">
+              <option selected>Number Theory</option><option>Topology</option><option>Abstract Algebra</option>
+              <option>Real Analysis</option><option>Combinatorics</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="flbl">Default Complexity</label>
+            <select class="fsel" id="defCx">
+              <option value="1">Undergraduate</option><option value="2" selected>Graduate</option>
+              <option value="3">Research-level</option><option value="4">Millennium</option>
+            </select>
+          </div>
+        </div>
+        <label class="flbl">System Prompt (Advanced)</label>
+        <textarea class="ftxt" id="sysPmt" rows="6" style="font-family:var(--fm);font-size:.77rem"></textarea>
+        <div style="font-size:.7rem;color:var(--tm);margin-top:.3rem">Placeholders: {domain} {type} {complexity} {context}</div>
+      </div>
+
+      <div class="card">
+        <div class="stitle"><i class="bi bi-database"></i> Data Management</div>
+        <div style="display:flex;gap:.65rem;flex-wrap:wrap">
+          <button class="abt" onclick="exportHist()"><i class="bi bi-download"></i> Export History</button>
+          <button class="abt" onclick="document.getElementById('impF').click()"><i class="bi bi-upload"></i> Import History</button>
+          <input type="file" id="impF" accept=".json" style="display:none" onchange="importHist(this)">
+          <button class="abt" onclick="clearHist()" style="color:var(--err)"><i class="bi bi-trash3"></i> Clear History</button>
+        </div>
+      </div>
+
+    </div>
+    <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="ctitle">About</div>
+        <div style="font-size:.83rem;color:var(--ts);line-height:1.7">
+          <p><strong style="color:var(--gold)">Neural Conjecture Proposer</strong> uses state-of-the-art language models to generate mathematically plausible conjectures across all domains.</p>
+          <div class="dvd"></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:.35rem"><span style="color:var(--tm)">Version</span><span style="font-family:var(--fm);font-size:.78rem">2.0.0</span></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:.35rem"><span style="color:var(--tm)">AI Provider</span><span>Groq</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--tm)">Storage</span><span>LocalStorage</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ctitle">Pro Tips</div>
+        <ul style="font-size:.8rem;color:var(--ts);padding-left:1.1rem;line-height:2.1">
+          <li>Higher temperature → more creative conjectures</li>
+          <li>Add context to focus on specific sub-areas</li>
+          <li>Mixtral excels at long, detailed output</li>
+          <li>Use Batch to explore a domain quickly</li>
+          <li>Ctrl+Enter to generate from anywhere</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div style="text-align:right;margin-top:1.4rem">
+    <button class="btn-pg" onclick="saveSettings()"><i class="bi bi-floppy"></i> Save Settings</button>
+  </div>
+</div>
+
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="fq">"Mathematics is not about numbers, equations, computations, or algorithms: it is about understanding."</div>
+  <div class="fa">— William Paul Thurston</div>
+  <div style="margin-top:1.25rem;font-size:.72rem;color:var(--tm)">Neural Conjecture Proposer · Powered by Groq AI · All conjectures are AI-generated and require rigorous mathematical verification</div>
+</footer>
+
+<div class="tc" id="tc"></div>
+<div class="movl" id="movl" style="display:none" onclick="closeMod(event)">
+  <div class="mbox" onclick="event.stopPropagation()">
+    <button class="mclose" onclick="closeMod()">✕</button>
+    <div id="modC"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+
+
+// ══════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+// CONSTANTS  —  verified against console.groq.com/docs/models
+// ══════════════════════════════════════════════════════════
+const DEFAULT_KEY   = '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';
+const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+ 
+// Only models confirmed active on Groq — anything else is auto-corrected to default
+const VALID_MODELS = [
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant',
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
+  'meta-llama/llama-4-scout-17b-16e-instruct',
+  'qwen/qwen3-32b'
+];
+ 
+// ══════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════
+const S = {
+  apiKey: DEFAULT_KEY,
+  model:  DEFAULT_MODEL,
+  endpoint: GROQ_ENDPOINT,
+  domain: 'Number Theory', type: 'Existence', cx: 2, temp: 0.7,
+  hist: [], charts: {}, hFilter: 'all', hSearch: '', generating: false
+};
+ 
+const CXL     = ['', 'Undergraduate', 'Graduate', 'Research-level', 'Millennium-level'];
+const DOMAINS = ['Number Theory','Topology','Abstract Algebra','Real Analysis',
+                 'Combinatorics','Differential Geometry','Probability Theory','Set Theory'];
+ 
+const DEF_PROMPT = `You are a world-class mathematician specializing in generating novel, rigorous conjectures. Be creative yet mathematically grounded.
+ 
+Format your response EXACTLY with these section headers:
+ 
+**CONJECTURE TITLE**: [A specific, descriptive title]
+ 
+**STATEMENT**: [Precise mathematical statement using LaTeX: $...$ for inline, $$...$$ for display math. Be rigorous.]
+ 
+**MOTIVATION**: [2-3 sentences: why is this interesting? what patterns or analogies suggest it might be true?]
+ 
+**RELATED RESULTS**: [Known theorems or results that support or contextualize this conjecture. Include author names where relevant.]
+ 
+**PROOF APPROACHES**: [2-3 concrete proof strategies — specific techniques, tools, or reductions that might work.]
+ 
+**DIFFICULTY**: [Exactly one of: Undergraduate / Graduate / Research-level / Millennium-level]
+ 
+**KEYWORDS**: [5-8 comma-separated mathematical keywords]
+ 
+The conjecture must be: non-trivial, specific, plausibly true (not obviously false), and potentially provable with current or near-future mathematics.`;
+ 
+// ══════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════
+function getKey() {
+  return (document.getElementById('apiKey')?.value || '').trim() || S.apiKey || '';
+}
+function getMaxTok() {
+  return parseInt(document.getElementById('maxTok')?.value || '1200') || 1200;
+}
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function san(s) {
+  if (!s) return '';
+  return s.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,'')
+          .replace(/on\w+\s*=\s*"[^"]*"/gi,'');
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function diffCls(d) {
+  const dl = (d||'').toLowerCase();
+  if (dl.includes('undergrad'))  return 'mbug';
+  if (dl.includes('millennium')) return 'mbml';
+  if (dl.includes('research'))   return 'mbre';
+  return 'mbgr';
+}
+function fmtDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts), now = new Date();
+  const diff = Math.floor((now - d) / 1000);
+  if (diff < 60)     return 'just now';
+  if (diff < 3600)   return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400)  return `${Math.floor(diff/3600)}h ago`;
+  if (diff < 604800) return `${Math.floor(diff/86400)}d ago`;
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+ 
+// ══════════════════════════════════════════════════════════
+// SETTINGS  —  self-healing: bad cached model is auto-fixed
+// ══════════════════════════════════════════════════════════
+function loadSettings() {
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem('ncp_s') || '{}'); } catch { s = {}; }
+ 
+  // API key: use stored only if non-empty, otherwise use hardcoded default
+  S.apiKey = (s.apiKey && s.apiKey.trim()) ? s.apiKey.trim() : DEFAULT_KEY;
+ 
+  // Model: VALIDATE against whitelist — fixes any stale deprecated model in cache
+  S.model = VALID_MODELS.includes(s.model) ? s.model : DEFAULT_MODEL;
+ 
+  // If cached model was invalid, persist the correction immediately
+  if (s.model && !VALID_MODELS.includes(s.model)) {
+    s.model = DEFAULT_MODEL;
+    try { localStorage.setItem('ncp_s', JSON.stringify(s)); } catch {}
+  }
+ 
+  S.endpoint = s.endpoint || GROQ_ENDPOINT;
+ 
+  // Populate DOM elements (may not exist yet — guarded with optional chaining)
+  const akEl = document.getElementById('apiKey');
+  if (akEl) akEl.value = S.apiKey;
+ 
+  const epEl = document.getElementById('apiEp');
+  if (epEl) epEl.value = S.endpoint;
+ 
+  const spEl = document.getElementById('sysPmt');
+  if (spEl && !spEl.value.trim()) spEl.value = s.sysPmt || DEF_PROMPT;
+  else if (spEl && !spEl.value.trim()) spEl.value = DEF_PROMPT;
+ 
+  const ddEl = document.getElementById('defDom');
+  if (ddEl && s.defDom) ddEl.value = s.defDom;
+ 
+  const dcEl = document.getElementById('defCx');
+  if (dcEl && s.defCx) dcEl.value = s.defCx;
+ 
+  // Mark active model card
+  document.querySelectorAll('.mcard').forEach(c =>
+    c.classList.toggle('active', c.dataset.m === S.model)
+  );
+}
+ 
+function saveSettings() {
+  const key = getKey();
+  const ep  = document.getElementById('apiEp')?.value || GROQ_ENDPOINT;
+  const sp  = document.getElementById('sysPmt')?.value || '';
+  const dd  = document.getElementById('defDom')?.value || 'Number Theory';
+  const dc  = document.getElementById('defCx')?.value  || '2';
+  S.apiKey   = key;
+  S.endpoint = ep;
+  try {
+    localStorage.setItem('ncp_s', JSON.stringify({ apiKey:key, model:S.model, endpoint:ep, sysPmt:sp, defDom:dd, defCx:dc }));
+  } catch {}
+  toast('Settings saved!', 'ok');
+}
+ 
+function resetSysPmt() {
+  const sp = document.getElementById('sysPmt');
+  if (sp) sp.value = DEF_PROMPT;
+  toast('System prompt reset to default.', 'ok');
+}
+ 
+function selModel(card) {
+  document.querySelectorAll('.mcard').forEach(c => c.classList.remove('active'));
+  card.classList.add('active');
+  S.model = card.dataset.m;
+  toast(`Model set: ${card.dataset.m}`, 'ok');
+}
+ 
+async function testKey() {
+  const key = getKey();
+  if (!key) { toast('Enter an API key first.', 'er'); return; }
+  setStat('ld', 'Testing…');
+  toast('Testing connection…');
+  try {
+    const res = await fetch(S.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${key}` },
+      body: JSON.stringify({
+        model: S.model,
+        messages: [{ role:'user', content:'Reply with just: OK' }],
+        max_tokens: 5
+      })
+    });
+    if (res.ok) {
+      setStat('on', 'Connected');
+      toast('✓ Connection successful! API key is valid.', 'ok');
+    } else {
+      let errMsg = `HTTP ${res.status}`;
+      try { const ej = await res.json(); errMsg = ej.error?.message || ej.message || errMsg; } catch {}
+      throw new Error(errMsg);
+    }
+  } catch (e) {
+    setStat('er', 'Error');
+    toast('Connection failed: ' + e.message, 'er');
+  }
+  setTimeout(() => setStat('', ''), 5000);
+}
+ 
+function toggleKey() {
+  const inp = document.getElementById('apiKey'), ic = document.getElementById('keyEye');
+  if (inp.type === 'password') { inp.type = 'text'; if (ic) ic.className = 'bi bi-eye-slash'; }
+  else                         { inp.type = 'password'; if (ic) ic.className = 'bi bi-eye'; }
+}
+ 
+// ══════════════════════════════════════════════════════════
+// HISTORY PERSISTENCE
+// ══════════════════════════════════════════════════════════
+function saveHist() { try { localStorage.setItem('ncp_h', JSON.stringify(S.hist)); } catch {} }
+function loadHist() {
+  try { const s = localStorage.getItem('ncp_h'); if (s) S.hist = JSON.parse(s); }
+  catch { S.hist = []; }
+}
+ 
+// ══════════════════════════════════════════════════════════
+// GROQ API  —  robust error extraction
+// ══════════════════════════════════════════════════════════
+async function callGroq(sys, usr, opts = {}) {
+  const key = getKey();
+  if (!key) throw new Error('No API key — add your Groq key in Settings.');
+ 
+  let res;
+  try {
+    res = await fetch(S.endpoint, {
+      method:  'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${key}` },
+      body: JSON.stringify({
+        model:       S.model,
+        messages:    [{ role:'system', content:sys }, { role:'user', content:usr }],
+        temperature: opts.temp    ?? S.temp,
+        max_tokens:  opts.maxTok  ?? getMaxTok(),
+        stream:      false
+      })
+    });
+  } catch (networkErr) {
+    throw new Error('Network error — check your internet connection. (' + networkErr.message + ')');
+  }
+ 
+  if (!res.ok) {
+    let errMsg = `HTTP ${res.status} ${res.statusText}`;
+    try {
+      const ej = await res.json();
+      errMsg = ej.error?.message || ej.message || errMsg;
+    } catch {}
+    throw new Error(errMsg);
+  }
+ 
+  let data;
+  try { data = await res.json(); } catch { throw new Error('Invalid JSON response from API.'); }
+ 
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) throw new Error('Empty response from API — try again.');
+  return content;
+}
+ 
+// ══════════════════════════════════════════════════════════
+// PROMPT BUILDERS
+// ══════════════════════════════════════════════════════════
+function buildSys() {
+  const custom = document.getElementById('sysPmt')?.value;
+  if (custom && custom.trim()) {
+    return custom
+      .replace('{domain}', S.domain)
+      .replace('{type}',   S.type)
+      .replace('{complexity}', CXL[S.cx])
+      .replace('{context}', document.getElementById('ctxInp')?.value || '');
+  }
+  return DEF_PROMPT;
+}
+function buildUser(extra) {
+  let p = `Generate a novel ${S.type.toLowerCase()} conjecture in ${S.domain}. Difficulty: ${CXL[S.cx]}-level.`;
+  const ctx = document.getElementById('ctxInp')?.value;
+  if (ctx && ctx.trim()) p += ` Additional context: ${ctx}`;
+  if (extra) p += ` ${extra}`;
+  return p;
+}
+ 
+// ══════════════════════════════════════════════════════════
+// PARSE RESPONSE
+// ══════════════════════════════════════════════════════════
+function parseResp(txt) {
+  const get = k => {
+    const rx = new RegExp(`\\*\\*${k}\\*\\*:?\\s*([\\s\\S]*?)(?=\\*\\*[A-Z]|$)`, 'i');
+    const m = txt.match(rx); return m ? m[1].trim() : '';
+  };
+  const title      = get('CONJECTURE TITLE') || get('TITLE') || 'Novel Conjecture';
+  const statement  = get('STATEMENT') || txt.substring(0, 400);
+  const motivation = get('MOTIVATION');
+  const related    = get('RELATED RESULTS') || get('RELATED');
+  const approaches = get('PROOF APPROACHES') || get('APPROACHES');
+  const difficulty = get('DIFFICULTY') || CXL[S.cx];
+  const kw         = get('KEYWORDS');
+  const keywords   = kw ? kw.split(',').map(k => k.trim()).filter(Boolean) : [];
+  return { title, statement, motivation, related, approaches, difficulty, keywords, raw: txt };
+}
+ 
+// ══════════════════════════════════════════════════════════
+// RENDER CONJECTURE
+// ══════════════════════════════════════════════════════════
+function renderConj(parsed, container, domLabel) {
+  const id  = 'c' + Date.now();
+  const dom = domLabel || S.domain;
+  container.innerHTML = `
+    <div class="cout anim" id="${id}">
+      <div class="chdr">
+        <div class="ctlx">${esc(parsed.title)}</div>
+        <div class="cmeta">
+          <span class="mbadge mbd">${esc(dom)}</span>
+          <span class="mbadge ${diffCls(parsed.difficulty)}">${esc(parsed.difficulty || 'Graduate')}</span>
+          <span style="font-size:.68rem;color:var(--tm);margin-left:.25rem">via ${esc(S.model)}</span>
+        </div>
+      </div>
+      ${parsed.statement  ? `<div class="csec"><div class="cstitle">Statement</div><div class="sbox">${san(parsed.statement)}</div></div>` : ''}
+      ${parsed.motivation ? `<div class="csec"><div class="cstitle">Motivation</div><div class="tblk">${san(parsed.motivation)}</div></div>` : ''}
+      ${parsed.related    ? `<div class="csec"><div class="cstitle">Related Results</div><div class="tblk">${san(parsed.related)}</div></div>` : ''}
+      ${parsed.approaches ? `<div class="csec"><div class="cstitle">Proof Approaches</div><div class="tblk">${san(parsed.approaches)}</div></div>` : ''}
+      ${parsed.keywords?.length ? `<div class="csec"><div class="cstitle">Keywords</div><div class="kwlist">${parsed.keywords.map(k=>`<span class="kwtag">${esc(k)}</span>`).join('')}</div></div>` : ''}
+      <div class="cactions">
+        <button class="abt" onclick="copyConj('${id}',this)"><i class="bi bi-clipboard"></i> Copy</button>
+        <button class="abt" onclick="shareConj('${id}')"><i class="bi bi-share"></i> Share</button>
+        <div style="flex:1"></div>
+        <button class="abt" id="lb-${id}" onclick="likeConj(this,'${id}')"><i class="bi bi-heart"></i> Save</button>
+      </div>
+    </div>`;
+  if (window.MathJax?.typesetPromise) MathJax.typesetPromise([container]).catch(() => {});
+}
+ 
+// ══════════════════════════════════════════════════════════
+// GENERATE (SINGLE)
+// ══════════════════════════════════════════════════════════
+async function generateConjecture() {
+  if (S.generating) return;
+ 
+  const key = getKey();
+  if (!key) {
+    toast('Add your Groq API key in Settings first.', 'er');
+    switchTab('settings', document.querySelectorAll('.ntb')[5]);
+    return;
+  }
+ 
+  S.generating = true;
+  const btn = document.getElementById('genBtn');
+  const bc  = document.getElementById('genBtnC');
+  const out = document.getElementById('outArea');
+  if (btn) btn.disabled = true;
+  if (bc)  bc.innerHTML = `<div class="spin"></div> Generating <div class="ldots"><span></span><span></span><span></span></div>`;
+  setStat('ld', 'Generating…');
+  if (out) out.innerHTML = `
+    <div style="text-align:center;padding:3rem;color:var(--tm)">
+      <div style="font-size:2.8rem;animation:spinr 1.8s linear infinite;display:inline-block">⟳</div>
+      <div style="font-family:var(--fd);font-size:1.15rem;color:var(--ts);margin-top:.75rem">Conjuring mathematics…</div>
+      <div style="font-size:.8rem;margin-top:.35rem">model: <strong>${S.model}</strong></div>
+    </div>`;
+ 
+  try {
+    const raw    = await callGroq(buildSys(), buildUser());
+    const parsed = parseResp(raw);
+    if (out) renderConj(parsed, out, S.domain);
+ 
+    const entry = {
+      id: Date.now().toString(), ts: new Date().toISOString(),
+      domain: S.domain, type: S.type, cx: CXL[S.cx],
+      title: parsed.title, statement: parsed.statement,
+      motivation: parsed.motivation, related: parsed.related,
+      approaches: parsed.approaches, difficulty: parsed.difficulty,
+      keywords: parsed.keywords, raw, liked: false
+    };
+    S.hist.unshift(entry);
+    saveHist();
+    updHeroTotal();
+    setStat('on', 'Done');
+    toast('Conjecture generated & saved!', 'ok');
+    setTimeout(() => setStat('', ''), 3000);
+ 
+  } catch (e) {
+    const errMsg = e.message || 'Unknown error';
+    if (out) out.innerHTML = `
+      <div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.3);border-radius:var(--r);padding:1.4rem;color:var(--err)">
+        <div style="font-weight:600;margin-bottom:.4rem"><i class="bi bi-exclamation-triangle"></i> Generation Failed</div>
+        <div style="font-size:.85rem;color:var(--ts);word-break:break-word">${esc(errMsg)}</div>
+        <hr style="border-color:rgba(239,68,68,.2);margin:.8rem 0">
+        <div style="font-size:.78rem;color:var(--tm)">
+          <strong>Model in use:</strong> ${esc(S.model)}<br>
+          <strong>Key (last 6):</strong> …${esc(getKey().slice(-6))}<br><br>
+          Verify your key at <a href="https://console.groq.com/keys" target="_blank" style="color:var(--elec)">console.groq.com/keys</a>
+        </div>
+      </div>`;
+    setStat('er', 'Error');
+    toast(errMsg, 'er');
+    setTimeout(() => setStat('', ''), 4000);
+ 
+  } finally {
+    S.generating = false;
+    if (btn) btn.disabled = false;
+    if (bc)  bc.innerHTML = `<i class="bi bi-lightning-charge-fill"></i> Generate Conjecture`;
+  }
+}
+ 
+// ══════════════════════════════════════════════════════════
+// BATCH GENERATION
+// ══════════════════════════════════════════════════════════
+async function runBatch() {
+  const key = getKey();
+  if (!key) { toast('Add your Groq API key in Settings first.', 'er'); return; }
+ 
+  const btn   = document.getElementById('batchBtn');
+  const bc    = document.getElementById('bBtnC');
+  const count = parseInt(document.getElementById('bCnt')?.value   || '3');
+  const dom   =          document.getElementById('bDom')?.value   || 'Number Theory';
+  const cx    =          document.getElementById('bCx')?.value    || 'Graduate';
+  const theme =          document.getElementById('bTheme')?.value || '';
+  const res   = document.getElementById('bRes');
+  const pb    = document.getElementById('bProgB');
+  const bst   = document.getElementById('bStat');
+  const bc2   = document.getElementById('bCnt2');
+ 
+  if (btn) btn.disabled = true;
+  if (bc)  bc.innerHTML = `<div class="spin"></div> Running Batch…`;
+  if (res) res.innerHTML = '';
+ 
+  const TYPES = ['Existence','Inequality','Equivalence','Structural','Asymptotic'];
+  let succeeded = 0;
+ 
+  for (let i = 0; i < count; i++) {
+    if (bst)  bst.textContent  = `Generating ${i+1} of ${count}…`;
+    if (bc2)  bc2.textContent  = `${i}/${count}`;
+    if (pb)   pb.style.width   = `${(i/count)*100}%`;
+ 
+    const type      = TYPES[i % TYPES.length];
+    const actualDom = dom === 'Mixed' ? DOMAINS[i % DOMAINS.length] : dom;
+ 
+    try {
+      let usr = `Generate a novel ${type.toLowerCase()} conjecture in ${actualDom}. Difficulty: ${cx}-level.`;
+      if (theme) usr += ` Theme/focus: ${theme}.`;
+      usr += ` This is conjecture ${i+1} of ${count} — ensure it is unique and distinct.`;
+ 
+      const raw    = await callGroq(buildSys(), usr, { temp: 0.7 + i*0.05, maxTok: 1000 });
+      const parsed = parseResp(raw);
+      succeeded++;
+ 
+      if (res) {
+        const card  = document.createElement('div');
+        card.className = 'bcardx anim';
+        card.innerHTML = `
+          <div class="bnum">CONJECTURE ${String(i+1).padStart(2,'0')} · ${type.toUpperCase()}</div>
+          <div class="bct">${esc(parsed.title)}</div>
+          <div class="bcp">${esc((parsed.statement||'').replace(/\$\$?[^$]*\$\$?/g,'[formula]').substring(0,155))}…</div>
+          <div style="margin-top:.65rem;display:flex;gap:.35rem;flex-wrap:wrap">
+            <span class="mbadge mbd">${esc(actualDom)}</span>
+            <span style="font-size:.68rem;color:var(--tm)">${esc(parsed.difficulty||cx)}</span>
+          </div>`;
+        card.onclick = () => showMod({...parsed, domain:actualDom}, actualDom);
+        res.appendChild(card);
+      }
+ 
+      const entry = {
+        id: Date.now().toString()+i, ts: new Date().toISOString(),
+        domain: actualDom, type, cx,
+        title: parsed.title, statement: parsed.statement,
+        motivation: parsed.motivation, related: parsed.related,
+        approaches: parsed.approaches, difficulty: parsed.difficulty,
+        keywords: parsed.keywords, raw, liked: false
+      };
+      S.hist.unshift(entry);
+ 
+    } catch (e) {
+      if (res) {
+        const ec = document.createElement('div');
+        ec.className = 'bcardx';
+        ec.innerHTML = `
+          <div class="bnum" style="color:var(--err)">CONJECTURE ${i+1} · FAILED</div>
+          <div style="font-size:.8rem;color:var(--tm)">${esc(e.message)}</div>`;
+        res.appendChild(ec);
+      }
+    }
+ 
+    if (i < count - 1) await sleep(1000);
+  }
+ 
+  if (pb)  pb.style.width    = '100%';
+  if (bst) bst.textContent   = `Complete — ${succeeded}/${count} succeeded`;
+  if (bc2) bc2.textContent   = `${count}/${count}`;
+  saveHist(); updHeroTotal();
+  toast(`Batch done! ${succeeded}/${count} conjectures generated.`, 'ok');
+  if (btn) btn.disabled = false;
+  if (bc)  bc.innerHTML = `<i class="bi bi-grid-3x3-gap-fill"></i> Generate Batch`;
+}
+ 
+// ══════════════════════════════════════════════════════════
+// MODAL
+// ══════════════════════════════════════════════════════════
+function showMod(parsed, dom) {
+  const modC = document.getElementById('modC');
+  if (modC) renderConj(parsed, modC, dom);
+  const movl = document.getElementById('movl');
+  if (movl) movl.style.display = 'flex';
+}
+function closeMod(ev) {
+  const movl = document.getElementById('movl');
+  if (!ev || ev.target === movl) if (movl) movl.style.display = 'none';
+}
+ 
+// ══════════════════════════════════════════════════════════
+// HISTORY — CRUD
+// ══════════════════════════════════════════════════════════
+function renderHist() {
+  const list = document.getElementById('histList');
+  const cnt  = document.getElementById('histCnt');
+  let f = S.hist;
+ 
+  if (S.hFilter && S.hFilter !== 'all') f = f.filter(h => h.domain === S.hFilter);
+  if (S.hSearch) {
+    const q = S.hSearch.toLowerCase();
+    f = f.filter(h =>
+      (h.title||'').toLowerCase().includes(q) ||
+      (h.domain||'').toLowerCase().includes(q) ||
+      (h.statement||'').toLowerCase().includes(q) ||
+      (h.keywords||[]).some(k => k.toLowerCase().includes(q))
+    );
+  }
+ 
+  if (cnt) cnt.textContent = `${S.hist.length} conjecture${S.hist.length !== 1 ? 's' : ''} saved`;
+  if (!list) return;
+ 
+  if (!f.length) {
+    list.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">📚</div>
+        <div class="empty-title">${S.hist.length === 0 ? 'No history yet' : 'No matches found'}</div>
+        <div class="empty-sub">${S.hist.length === 0 ? 'Generated conjectures will appear here' : 'Try a different search or filter'}</div>
+      </div>`;
+    return;
+  }
+ 
+  list.innerHTML = f.map(h => `
+    <div class="hcard" onclick="openHist('${h.id}')">
+      <div class="hcard-top">
+        <div class="hcard-title">${esc(h.title || 'Untitled')}</div>
+        <div class="hcard-time">${fmtDate(h.ts)}</div>
+      </div>
+      <div class="hcard-prev">${esc((h.statement||'').replace(/\$\$?[^$]*\$\$?/g,'[formula]').substring(0,185))}</div>
+      <div class="hcard-ft">
+        <div style="display:flex;gap:.35rem;flex-wrap:wrap;align-items:center">
+          <span class="mbadge mbd">${esc(h.domain||'Unknown')}</span>
+          ${h.difficulty ? `<span style="font-size:.68rem;color:var(--tm)">${esc(h.difficulty)}</span>` : ''}
+          ${h.liked ? `<span style="font-size:.68rem;color:var(--err)">♥ Saved</span>` : ''}
+        </div>
+        <button class="hdel" onclick="delHist('${h.id}',event)"><i class="bi bi-trash3"></i></button>
+      </div>
+    </div>`).join('');
+}
+ 
+function filterHist()  { S.hSearch = document.getElementById('hSearch')?.value || ''; renderHist(); }
+function filterDom(d, chip) {
+  document.querySelectorAll('#hFilters .chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  S.hFilter = d;
+  renderHist();
+}
+function openHist(id) {
+  const h = S.hist.find(x => x.id === id);
+  if (!h) return;
+  showMod({ title:h.title, statement:h.statement, motivation:h.motivation, related:h.related, approaches:h.approaches, difficulty:h.difficulty, keywords:h.keywords||[] }, h.domain);
+}
+function delHist(id, e) {
+  e.stopPropagation();
+  S.hist = S.hist.filter(h => h.id !== id);
+  saveHist(); renderHist(); updHeroTotal();
+  toast('Removed', 'ok');
+}
+function clearHist() {
+  if (!confirm('Clear all history? This cannot be undone.')) return;
+  S.hist = [];
+  saveHist(); renderHist(); updHeroTotal();
+  toast('History cleared', 'ok');
+}
+function exportHist() {
+  const blob = new Blob([JSON.stringify(S.hist, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `conjectures-${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  toast('Exported!', 'ok');
+}
+function importHist(inp) {
+  const f = inp.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = e => {
+    try {
+      const im = JSON.parse(e.target.result);
+      if (Array.isArray(im)) {
+        const ids   = new Set(S.hist.map(h => h.id));
+        const fresh = im.filter(x => !ids.has(x.id));
+        S.hist = [...fresh, ...S.hist];
+        saveHist(); renderHist(); updHeroTotal();
+        toast(`Imported ${fresh.length} new conjecture${fresh.length!==1?'s':''}!`, 'ok');
+      } else throw new Error('Expected a JSON array');
+    } catch (err) { toast('Import failed: ' + err.message, 'er'); }
+  };
+  r.readAsText(f);
+  inp.value = '';
+}
+ 
+// ══════════════════════════════════════════════════════════
+// CONJECTURE ACTIONS
+// ══════════════════════════════════════════════════════════
+function likeConj(btn, conjId) {
+  const idx = S.hist.findIndex(h => conjId.includes(h.id) || h.id.includes(conjId.replace('c','')));
+  const i   = idx >= 0 ? idx : 0;
+  if (S.hist[i]) {
+    S.hist[i].liked = !S.hist[i].liked;
+    saveHist();
+    if (S.hist[i].liked) {
+      btn.classList.add('liked');
+      btn.innerHTML = `<i class="bi bi-heart-fill"></i> Saved`;
+      toast('Saved to favourites!', 'ok');
+    } else {
+      btn.classList.remove('liked');
+      btn.innerHTML = `<i class="bi bi-heart"></i> Save`;
+      toast('Removed from favourites', 'ok');
+    }
+  }
+}
+function copyConj(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  navigator.clipboard.writeText(el.innerText || el.textContent || '').then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check2"></i> Copied!';
+    btn.style.color = 'var(--ok)'; btn.style.borderColor = 'rgba(16,185,129,.45)';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.color=''; btn.style.borderColor=''; }, 2000);
+    toast('Copied to clipboard!', 'ok');
+  }).catch(() => toast('Copy failed — try selecting manually.', 'er'));
+}
+function shareConj(id) {
+  const el   = document.getElementById(id);
+  const text = el ? (el.innerText || el.textContent || '') : '';
+  if (navigator.share) {
+    navigator.share({ title:'Neural Conjecture', text: text.substring(0, 600) + '…' }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text.substring(0, 1000))
+      .then(() => toast('Copied to clipboard for sharing!', 'ok'))
+      .catch(() => toast('Could not share.', 'er'));
+  }
+}
+function copyTx(tx, msg) {
+  navigator.clipboard.writeText(tx)
+    .then(() => toast(msg || 'Copied!', 'ok'))
+    .catch(() => toast('Copy failed.', 'er'));
+}
+ 
+// ══════════════════════════════════════════════════════════
+// ANALYTICS
+// ══════════════════════════════════════════════════════════
+function renderAnalytics() {
+  const h          = S.hist;
+  const likedCount = h.filter(x => x.liked).length;
+  const domsExpl   = [...new Set(h.map(x => x.domain || 'Unknown'))].length;
+  const cxMap      = { Undergraduate:1, Graduate:2, 'Research-level':3, 'Millennium-level':4 };
+  const vals       = h.map(x => cxMap[x.difficulty] || cxMap[x.cx] || 2);
+  const avgCx      = vals.length ? (vals.reduce((a,b) => a+b, 0) / vals.length).toFixed(1) : '—';
+ 
+  const aCards = document.getElementById('aCards');
+  if (aCards) aCards.innerHTML = `
+    <div class="acard"><span class="anum">${h.length}</span><div class="albl">Total Generated</div></div>
+    <div class="acard"><span class="anum">${likedCount}</span><div class="albl">Favourited</div></div>
+    <div class="acard"><span class="anum">${domsExpl}</span><div class="albl">Domains Explored</div></div>
+    <div class="acard"><span class="anum">${avgCx}</span><div class="albl">Avg Complexity</div></div>`;
+ 
+  const domCounts = {};
+  DOMAINS.forEach(d => { domCounts[d] = 0; });
+  h.forEach(x => { const d = x.domain || 'Unknown'; domCounts[d] = (domCounts[d]||0)+1; });
+  const dLabels = Object.keys(domCounts).filter(d => domCounts[d] > 0);
+  const dData   = dLabels.map(d => domCounts[d]);
+ 
+  const cxCount = { Undergraduate:0, Graduate:0, 'Research-level':0, 'Millennium-level':0 };
+  h.forEach(x => { const k = x.difficulty || x.cx || 'Graduate'; if (cxCount[k]!==undefined) cxCount[k]++; else cxCount['Graduate']++; });
+ 
+  const today    = new Date();
+  const actData  = Array(7).fill(0);
+  h.forEach(x => {
+    const d = new Date(x.ts), diff = Math.floor((today-d)/(1000*60*60*24));
+    if (diff>=0 && diff<7) actData[6-diff]++;
+  });
+  const dayNames  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const actLabels = Array.from({length:7}, (_,i) => {
+    const d = new Date(today); d.setDate(d.getDate()-(6-i)); return dayNames[d.getDay()];
+  });
+ 
+  const gold  = 'rgba(212,175,55,', blue = 'rgba(79,156,249,';
+  const gridC = 'rgba(30,45,74,.5)', tickC = '#4b5563';
+  const ttCfg = { backgroundColor:'#111827', titleColor:'#f0e8d8', bodyColor:'#94a3b8', borderColor:'#1e2d4a', borderWidth:1 };
+  const scCfg = { x:{ grid:{color:gridC}, ticks:{color:tickC} }, y:{ grid:{color:gridC}, ticks:{color:tickC,stepSize:1}, min:0 } };
+ 
+  ['domChart','cxChart','actChart'].forEach(id => {
+    if (S.charts[id]) { try { S.charts[id].destroy(); } catch {} delete S.charts[id]; }
+  });
+ 
+  const dc = document.getElementById('domChart');
+  if (dc) {
+    if (dLabels.length) {
+      S.charts.domChart = new Chart(dc, {
+        type: 'doughnut',
+        data: { labels:dLabels, datasets:[{ data:dData, backgroundColor:dLabels.map((_,i)=>`hsla(${38+i*28},65%,${50+i%2*8}%,0.85)`), borderColor:'#111827', borderWidth:2 }] },
+        options: { responsive:true, plugins:{ legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:11},padding:10}}, tooltip:ttCfg } }
+      });
+    } else {
+      const ctx2 = dc.getContext('2d'); ctx2.clearRect(0,0,dc.width,dc.height);
+      ctx2.fillStyle='#4b5563'; ctx2.font='13px Inter'; ctx2.textAlign='center';
+      ctx2.fillText('No data yet', dc.width/2, dc.height/2);
+    }
+  }
+ 
+  const cc = document.getElementById('cxChart');
+  if (cc) {
+    S.charts.cxChart = new Chart(cc, {
+      type: 'bar',
+      data: { labels:Object.keys(cxCount), datasets:[{ data:Object.values(cxCount), backgroundColor:[blue+'0.65)',gold+'0.65)','rgba(239,68,68,.65)','rgba(139,72,32,.65)'], borderColor:[blue+'1)',gold+'1)','rgba(239,68,68,1)','rgba(139,72,32,1)'], borderWidth:1, borderRadius:5 }] },
+      options: { responsive:true, plugins:{legend:{display:false},tooltip:ttCfg}, scales:{ x:{grid:{color:gridC},ticks:{color:tickC,maxRotation:20,font:{size:10}}}, y:{grid:{color:gridC},ticks:{color:tickC,stepSize:1},min:0} } }
+    });
+  }
+ 
+  const ac = document.getElementById('actChart');
+  if (ac) {
+    S.charts.actChart = new Chart(ac, {
+      type: 'line',
+      data: { labels:actLabels, datasets:[{ data:actData, borderColor:gold+'1)', backgroundColor:gold+'0.08)', borderWidth:2, pointBackgroundColor:gold+'1)', pointRadius:4, tension:.35, fill:true }] },
+      options: { responsive:true, plugins:{legend:{display:false},tooltip:ttCfg}, scales:scCfg }
+    });
+  }
+}
+ 
+// ══════════════════════════════════════════════════════════
+// SELECTORS
+// ══════════════════════════════════════════════════════════
+function selDomain(btn) {
+  document.querySelectorAll('.dbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active'); S.domain = btn.dataset.d;
+}
+function selType(chip) {
+  document.querySelectorAll('#typeChips .chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active'); S.type = chip.dataset.t;
+}
+function updCx(v) { S.cx = parseInt(v); const el = document.getElementById('cxLbl'); if (el) el.textContent = CXL[v]; }
+function updTmp(v) { S.temp = parseFloat(v); const el = document.getElementById('tmpLbl'); if (el) el.textContent = parseFloat(v).toFixed(1); }
+ 
+// ══════════════════════════════════════════════════════════
+// TAB NAVIGATION
+// ══════════════════════════════════════════════════════════
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tp').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.ntb').forEach(b => b.classList.remove('active'));
+  const p = document.getElementById(`tp-${tab}`);
+  if (p) { p.classList.add('active'); p.classList.remove('anim'); void p.offsetWidth; p.classList.add('anim'); }
+  if (btn) btn.classList.add('active');
+  if (tab === 'analytics') setTimeout(renderAnalytics, 80);
+  if (tab === 'hist') renderHist();
+  scrollToApp();
+}
+ 
+// ══════════════════════════════════════════════════════════
+// STATUS / TOAST
+// ══════════════════════════════════════════════════════════
+function setStat(type, text) {
+  const dot = document.getElementById('sdot'), txt = document.getElementById('stxt');
+  if (dot) dot.className = 'sdot' + (type ? ` ${type}` : '');
+  if (txt) { txt.textContent = text || ''; txt.style.display = text ? 'inline' : 'none'; }
+}
+function toast(msg, type) {
+  const tc = document.getElementById('tc'); if (!tc) return;
+  const el = document.createElement('div');
+  el.className = `toast${type==='ok'?' ok':type==='er'?' er':''}`;
+  el.innerHTML = `<span style="opacity:.7;font-size:.9rem">${type==='ok'?'✓':type==='er'?'✕':'ℹ'}</span> ${esc(msg)}`;
+  tc.appendChild(el);
+  while (tc.children.length > 4) tc.removeChild(tc.firstChild);
+  setTimeout(() => { el.style.animation='slIn .2s ease reverse'; setTimeout(() => { if (el.parentNode) el.remove(); }, 200); }, 3500);
+}
+ 
+// ══════════════════════════════════════════════════════════
+// SCROLL / HERO
+// ══════════════════════════════════════════════════════════
+function scrollToHero() { window.scrollTo({ top:0, behavior:'smooth' }); }
+function scrollToApp()  { document.getElementById('appSec')?.scrollIntoView({ behavior:'smooth', block:'start' }); }
+function updHeroTotal() {
+  const el = document.getElementById('hTotal'); if (!el) return;
+  el.style.transition='transform .2s'; el.style.transform='scale(1.25)';
+  el.textContent = S.hist.length;
+  setTimeout(() => { el.style.transform='scale(1)'; }, 200);
+}
+ 
+// ══════════════════════════════════════════════════════════
+// CANVAS PARTICLES
+// ══════════════════════════════════════════════════════════
+function initCanvas() {
+  const cv = document.getElementById('bgCanvas'); if (!cv) return;
+  const ctx = cv.getContext('2d');
+  let W = cv.width = window.innerWidth, H = cv.height = window.innerHeight;
+  window.addEventListener('resize', () => { W=cv.width=window.innerWidth; H=cv.height=window.innerHeight; });
+  const SYM = ['∑','∫','∂','∈','∞','π','√','∇','∀','∃','⊂','∩','∪','ℕ','ℝ','ℂ','ℤ','ℚ','α','β','γ','δ','ε','λ','μ','σ','φ','ψ','ω','≡','≈','≤','≥','⊕','⊗','†','⟨','⟩','∝','∮','⊆','⊇','∧','∨','¬','⟹','⟺'];
+  const ps = Array.from({length:55}, () => ({
+    x:Math.random()*1400, y:Math.random()*800,
+    vx:(Math.random()-.5)*.28, vy:(Math.random()-.5)*.28,
+    sym:SYM[Math.floor(Math.random()*SYM.length)],
+    sz:10+Math.random()*13, op:0.04+Math.random()*.09,
+    top:0.04+Math.random()*.09, life:Math.random()*Math.PI*2
+  }));
+  function draw() {
+    ctx.clearRect(0,0,W,H);
+    for (let i=0;i<ps.length;i++) for (let j=i+1;j<ps.length;j++) {
+      const dx=ps[i].x-ps[j].x, dy=ps[i].y-ps[j].y, d=Math.sqrt(dx*dx+dy*dy);
+      if (d<90) { ctx.beginPath();ctx.moveTo(ps[i].x,ps[i].y);ctx.lineTo(ps[j].x,ps[j].y);ctx.strokeStyle=`rgba(212,175,55,${.018*(1-d/90)})`;ctx.lineWidth=.5;ctx.stroke(); }
+    }
+    ps.forEach(p => {
+      p.life+=.004; p.op=p.top*(.65+.35*Math.sin(p.life));
+      p.x+=p.vx; p.y+=p.vy;
+      if (p.x<-60) p.x=W+60; if (p.x>W+60) p.x=-60;
+      if (p.y<-60) p.y=H+60; if (p.y>H+60) p.y=-60;
+      ctx.save(); ctx.globalAlpha=p.op;
+      ctx.font=`${p.sz}px 'JetBrains Mono',monospace`;
+      ctx.fillStyle=Math.sin(p.life*1.3)>.3?'#4f9cf9':'#d4af37';
+      ctx.fillText(p.sym,p.x,p.y); ctx.restore();
+    });
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
+ 
+// ══════════════════════════════════════════════════════════
+// TICKER
+// ══════════════════════════════════════════════════════════
+function initTicker() {
+  const el = document.getElementById('tickerIn'); if (!el) return;
+  const items = [
+    '∑_{n=1}^{∞} 1/n² = π²/6  [Basel Problem]',
+    'e^{iπ} + 1 = 0  [Euler Identity]',
+    'ζ(s) = ∑ 1/nˢ  [Riemann Zeta]',
+    'Goldbach: ∀ even n>2, n = p + q',
+    '∫_{-∞}^{∞} e^{-x²} dx = √π',
+    'Twin Primes: ∃∞ many (p, p+2)',
+    'P ≟ NP  [Clay Millennium Problem]',
+    '∂u/∂t + (u·∇)u = −∇p + ν∇²u  [Navier-Stokes]',
+    'rank(E(ℚ)) = ord_{s=1} L(E,s)  [BSD Conjecture]',
+    'Poincaré: closed simply-connected 3-manifold ≅ S³  [Proved 2003]',
+    '∮ F·dr = ∬ (∇×F)·dS  [Stokes Theorem]',
+    'Fermat: aⁿ+bⁿ=cⁿ no integer solutions n>2  [Wiles 1995]',
+  ];
+  const doubled = [...items,...items];
+  el.innerHTML = doubled.map(i => `<span>${i}</span>`).join(' &nbsp;&bull;&nbsp; ');
+}
+ 
+// ══════════════════════════════════════════════════════════
+// LEARN
+// ══════════════════════════════════════════════════════════
+function initLearn() {
+  const container = document.getElementById('learnAccordion'); if (!container) return;
+  const conjs = [
+    {name:'Riemann Hypothesis',yr:'1859',status:'Open',sc:'err',statement:'All non-trivial zeros of $\\zeta(s)$ have real part $\\frac{1}{2}$.',lat:'\\zeta(s)=\\prod_p\\frac{1}{1-p^{-s}},\\quad\\text{Re}(\\rho)=\\tfrac{1}{2}',info:'One of the seven Millennium Prize Problems ($1M reward). Deeply linked to prime distribution.',dom:'Analytic Number Theory'},
+    {name:"Goldbach's Conjecture",yr:'1742',status:'Open',sc:'err',statement:'Every even integer $n > 2$ is the sum of two primes.',lat:'\\forall n>2,\\;2\\mid n\\;\\Rightarrow\\;\\exists\\,p,q\\in\\mathbb{P}:\\;n=p+q',info:'Verified computationally up to 4×10¹⁸. The weak version was proved by Helfgott in 2013.',dom:'Number Theory'},
+    {name:'Twin Prime Conjecture',yr:'~300 BC',status:'Open',sc:'err',statement:'There are infinitely many primes $p$ such that $p+2$ is also prime.',lat:'\\exists^\\infty\\,p\\in\\mathbb{P}:(p+2)\\in\\mathbb{P}',info:'Zhang (2013) proved infinitely many prime pairs with bounded gap ≤ 70M. Maynard reduced this to 246.',dom:'Number Theory'},
+    {name:'P vs NP',yr:'1971',status:'Open',sc:'err',statement:'Does every efficiently verifiable problem have an efficient solution?',lat:'\\mathcal{P}\\stackrel{?}{=}\\mathcal{NP}',info:'The central open problem of computer science. A $1M Millennium Prize awaits.',dom:'Computational Complexity'},
+    {name:'Poincaré Conjecture',yr:'1904 → Proved 2003',status:'Proved ✓',sc:'ok',statement:'Every closed, simply connected 3-manifold is homeomorphic to $S^3$.',lat:'M^3\\text{ closed, simply connected}\\Rightarrow M^3\\cong S^3',info:"Perelman proved this via Ricci flow. He declined the Millennium Prize and the Fields Medal.",dom:'Topology'},
+    {name:'Birch & Swinnerton-Dyer',yr:'1965',status:'Open',sc:'err',statement:'The rank of rational points on an elliptic curve equals the order of vanishing of its L-function at $s=1$.',lat:'\\text{rank}(E(\\mathbb{Q}))=\\mathrm{ord}_{s=1}\\,L(E,s)',info:'A Millennium Prize Problem. Partial results by Kolyvagin and Gross-Zagier support it.',dom:'Algebraic Geometry'},
+  ];
+  const emojis = ['🔢','📐','🔀','💻','🔮','📈'];
+  container.innerHTML = conjs.map((c,i) => `
+    <div class="lcard">
+      <div class="lcard-hdr" onclick="togLearn(this)">
+        <div class="lcard-title">${emojis[i]} ${c.name}
+          <span style="font-size:.68rem;padding:.18rem .55rem;border-radius:20px;background:rgba(${c.sc==='ok'?'16,185,129':'239,68,68'},.1);color:var(--${c.sc==='ok'?'ok':'err'});border:1px solid rgba(${c.sc==='ok'?'16,185,129':'239,68,68'},.3)">${c.status}</span>
+        </div>
+        <i class="bi bi-chevron-down" style="color:var(--tm);transition:transform .2s;flex-shrink:0"></i>
+      </div>
+      <div class="lcard-body">
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.65rem">
+          <span class="mbadge mbd">${c.dom}</span>
+          <span style="font-size:.7rem;color:var(--tm);margin-top:.12rem">Proposed ${c.yr}</span>
+        </div>
+        <div style="font-size:.88rem;color:var(--ts);margin-bottom:.65rem">${c.statement}</div>
+        <div class="lmex">$$${c.lat}$$</div>
+        <div style="font-size:.83rem;color:var(--tm)">${c.info}</div>
+      </div>
+    </div>`).join('');
+  if (window.MathJax?.typesetPromise)
+    setTimeout(() => MathJax.typesetPromise([container]).catch(()=>{}), 800);
+}
+function togLearn(hdr) {
+  const b = hdr.nextElementSibling, c = hdr.querySelector('i');
+  b.classList.toggle('open');
+  if (c) c.style.transform = b.classList.contains('open') ? 'rotate(180deg)' : '';
+  if (b.classList.contains('open') && window.MathJax?.typesetPromise) MathJax.typesetPromise([b]).catch(()=>{});
+}
+ 
+// ══════════════════════════════════════════════════════════
+// LATEX REFERENCE
+// ══════════════════════════════════════════════════════════
+function initLatex() {
+  const el = document.getElementById('latexRef'); if (!el) return;
+  const items = [
+    {l:'Sum',tx:'\\sum_{n=1}^{\\infty}',p:'∑'},{l:'Integral',tx:'\\int_a^b f(x)\\,dx',p:'∫'},
+    {l:'Partial',tx:'\\frac{\\partial f}{\\partial x}',p:'∂'},{l:'For All',tx:'\\forall x\\in\\mathbb{R}',p:'∀'},
+    {l:'Exists',tx:'\\exists\\, x: P(x)',p:'∃'},{l:'Infinity',tx:'\\lim_{n\\to\\infty}',p:'∞'},
+    {l:'Reals',tx:'\\mathbb{R}',p:'ℝ'},{l:'Integers',tx:'\\mathbb{Z}',p:'ℤ'},
+    {l:'Naturals',tx:'\\mathbb{N}',p:'ℕ'},{l:'Implies',tx:'A\\Rightarrow B',p:'⟹'},
+    {l:'Iff',tx:'A\\Leftrightarrow B',p:'⟺'},{l:'Nabla',tx:'\\nabla\\cdot F',p:'∇'},
+  ];
+  el.innerHTML = items.map(i => `
+    <div class="col-md-4 col-sm-6">
+      <div class="card" style="padding:.65rem;cursor:pointer" onclick="copyTx('${i.tx}','${i.l} copied!')">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--tm)">${i.l}</div>
+            <div style="font-family:var(--fm);font-size:.75rem;color:var(--elec);margin-top:.15rem">${i.tx.replace(/</g,'&lt;')}</div>
+          </div>
+          <span style="font-size:1.35rem">${i.p}</span>
+        </div>
+      </div>
+    </div>`).join('');
+}
+ 
+// ══════════════════════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ══════════════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey||e.metaKey) && e.key==='Enter') {
+    e.preventDefault();
+    if (document.getElementById('tp-gen')?.classList.contains('active')) generateConjecture();
+  }
+  if (e.key==='Escape') closeMod();
+});
+ 
+// ══════════════════════════════════════════════════════════
+// INIT  —  single DOMContentLoaded, executes everything
+// ══════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  loadHist();
+  loadSettings();   // sets S.apiKey, S.model (validated), populates inputs
+ 
+  initCanvas();
+  initTicker();
+  initLearn();
+  initLatex();
+  renderHist();
+  renderAnalytics();
+  updHeroTotal();
+ 
+  // Keep S.apiKey in sync whenever the user types in the key field
+  const akEl = document.getElementById('apiKey');
+  if (akEl) akEl.addEventListener('input', () => { S.apiKey = akEl.value.trim(); });
+});
+
+</script>
+</body>
+</html>
